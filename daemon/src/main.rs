@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use regex::Regex;
 use serde::{Deserialize, Serialize};
@@ -119,12 +119,15 @@ fn write_state(cfg: &Config, status: &str, tool: &str, message: &str) {
 #[allow(dead_code)]
 struct PiperWorker {
     stdin: ChildStdin,
-    reader: BufReader<tokio::process::ChildStdout>,
     child: Child,
 }
 
 impl PiperWorker {
-    async fn start(cfg: &Config) -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
+    /// Spawns the TTS worker. Playback events ("playing", "done", "stopped") are
+    /// forwarded asynchronously so UI status follows the real audio output.
+    async fn start(
+        cfg: &Config,
+    ) -> Result<(Self, mpsc::UnboundedReceiver<serde_json::Value>), Box<dyn std::error::Error + Send + Sync>> {
         let mut cmd = Command::new(&cfg.piper_python);
         cmd.arg(&cfg.piper_script)
             .stdin(std::process::Stdio::piped())
@@ -141,35 +144,27 @@ impl PiperWorker {
         reader.read_line(&mut line).await?;
         eprintln!("[TTS] Worker ready: {}", line.trim());
 
-        Ok(Self {
-            stdin,
-            reader,
-            child,
-        })
+        let (tx, rx) = mpsc::unbounded_channel::<serde_json::Value>();
+        tokio::spawn(async move {
+            let mut lines = reader.lines();
+            while let Ok(Some(l)) = lines.next_line().await {
+                if let Ok(ev) = serde_json::from_str::<serde_json::Value>(l.trim()) {
+                    let _ = tx.send(ev);
+                }
+            }
+            eprintln!("[TTS] Worker stream ended");
+        });
+
+        Ok((Self { stdin, child }, rx))
     }
 
-    async fn speak(&mut self, text: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let req = serde_json::json!({
-            "cmd": "speak",
-            "text": text
-        });
+    /// Queue a sentence for playback (non-blocking).
+    async fn enqueue(&mut self, text: &str) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let req = serde_json::json!({ "cmd": "speak", "text": text });
         self.stdin
             .write_all(format!("{}\n", serde_json::to_string(&req)?).as_bytes())
             .await?;
         self.stdin.flush().await?;
-
-        // Read responses until "done"
-        loop {
-            let mut line = String::new();
-            if self.reader.read_line(&mut line).await? == 0 {
-                break;
-            }
-            if let Ok(ev) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                if ev.get("event").and_then(|s| s.as_str()) == Some("done") {
-                    break;
-                }
-            }
-        }
         Ok(())
     }
 
@@ -179,27 +174,6 @@ impl PiperWorker {
             let _ = self.stdin.write_all(format!("{}\n", s).as_bytes()).await;
             let _ = self.stdin.flush().await;
         }
-    }
-
-    async fn wait_playback(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let req = serde_json::json!({"cmd": "wait"});
-        self.stdin
-            .write_all(format!("{}\n", serde_json::to_string(&req)?).as_bytes())
-            .await?;
-        self.stdin.flush().await?;
-
-        loop {
-            let mut line = String::new();
-            if self.reader.read_line(&mut line).await? == 0 {
-                break;
-            }
-            if let Ok(ev) = serde_json::from_str::<serde_json::Value>(line.trim()) {
-                if ev.get("event").and_then(|s| s.as_str()) == Some("done") {
-                    break;
-                }
-            }
-        }
-        Ok(())
     }
 }
 
@@ -334,6 +308,7 @@ struct DaemonState {
     cancel_flag: Arc<AtomicBool>,
     finish_listen_notify: Arc<Notify>,
     piper: Mutex<PiperWorker>,
+    tts_events: Mutex<mpsc::UnboundedReceiver<serde_json::Value>>,
     agy: Mutex<AgySession>,
 }
 
@@ -385,19 +360,55 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
     let state_tts = state.clone();
 
     let tts_handle = tokio::spawn(async move {
-        while let Some(sentence) = speech_rx.recv().await {
+        let mut events = state_tts.tts_events.lock().await;
+        // Drop stale events from a previous (interrupted) turn
+        while events.try_recv().is_ok() {}
+
+        let mut sent: usize = 0;
+        let mut finished: usize = 0;
+        let mut input_open = true;
+
+        loop {
             if state_tts.cancel_flag.load(Ordering::Relaxed) {
                 break;
             }
-            eprintln!("[VOICE:START] speaking: {}", sentence);
-            state_tts.set_status("speaking", "", &sentence).await;
-            let mut piper = state_tts.piper.lock().await;
-            let _ = piper.speak(&sentence).await;
-            eprintln!("[VOICE:DONE] finished sentence: {}", sentence);
-        }
-        if !state_tts.cancel_flag.load(Ordering::Relaxed) {
-            let mut piper = state_tts.piper.lock().await;
-            let _ = piper.wait_playback().await;
+            if !input_open && finished >= sent {
+                break;
+            }
+            tokio::select! {
+                s = speech_rx.recv(), if input_open => {
+                    match s {
+                        Some(sentence) => {
+                            let mut piper = state_tts.piper.lock().await;
+                            if piper.enqueue(&sentence).await.is_ok() {
+                                sent += 1;
+                            }
+                        }
+                        None => input_open = false,
+                    }
+                }
+                ev = events.recv() => {
+                    match ev {
+                        Some(e) => {
+                            let kind = e.get("event").and_then(|v| v.as_str()).unwrap_or("");
+                            match kind {
+                                "playing" => {
+                                    let txt = e.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                                    eprintln!("[VOICE:START] speaking: {}", txt);
+                                    state_tts.set_status("speaking", "", txt).await;
+                                }
+                                "done" => {
+                                    finished += 1;
+                                    eprintln!("[VOICE:DONE] {}/{}", finished, sent);
+                                }
+                                _ => {}
+                            }
+                        }
+                        None => break,
+                    }
+                }
+                _ = tokio::time::sleep(Duration::from_millis(200)) => {}
+            }
         }
     });
 
@@ -546,7 +557,7 @@ async fn run_daemon(cfg: Config) -> Result<(), Box<dyn std::error::Error + Send 
     write_state(&cfg, "idle", "", "");
 
     eprintln!("[DAEMON] Initializing resident TTS worker...");
-    let piper = PiperWorker::start(&cfg).await?;
+    let (piper, tts_events) = PiperWorker::start(&cfg).await?;
 
     eprintln!("[DAEMON] Initializing warm Antigravity CLI session...");
     let mut agy = AgySession::new(&cfg.agy_bin).await?;
@@ -558,6 +569,7 @@ async fn run_daemon(cfg: Config) -> Result<(), Box<dyn std::error::Error + Send 
         cancel_flag: Arc::new(AtomicBool::new(false)),
         finish_listen_notify: Arc::new(Notify::new()),
         piper: Mutex::new(piper),
+        tts_events: Mutex::new(tts_events),
         agy: Mutex::new(agy),
     });
 

@@ -28,31 +28,33 @@ BarWidget {
 
   readonly property real audioLevel: (root.status === "speaking") ? speechPulsation : ((root.status === "listening") ? 0.6 : 0)
 
+  // Original XARVIN orb geometry per state
   readonly property string activeOrbState: {
     if (root.status === "listening") return "listening"
-    if (root.status === "working")   return "working"
-    if (root.status === "thinking")  return "solving"
+    if (root.status === "working")   return "solving"
+    if (root.status === "thinking")  return "searching"
     if (root.status === "speaking")  return "composing"
-    return "searching" // Globe Halftone
+    return "searching"
   }
 
+  // Original XARVIN palette
   property color coreColor: {
-    if (root.status === "working")   return "#a855f7" // Purple
-    if (root.status === "listening") return "#60a5fa" // Blue
-    if (root.status === "thinking")  return "#f59e0b" // Amber
-    if (root.status === "speaking")  return "#10b981" // Green
-    return "#ffffff" // White
+    if (root.status === "working")   return "#e0a458"
+    if (root.status === "listening") return "#5cc8b4"
+    if (root.status === "thinking")  return "#c39bd3"
+    if (root.status === "speaking")  return "#6ab0f3"
+    return "#eeeae2"
   }
 
   Behavior on coreColor { ColorAnimation { duration: 180 } }
 
   // Animate 3D orb smoothly
   Timer {
-    interval: 16
+    interval: 45
     running: root.visible
     repeat: true
     onTriggered: {
-      root.tSec += 0.016
+      root.tSec += 0.045 * (1 + root.audioLevel * 0.8)
       orbCanvas.requestPaint()
     }
   }

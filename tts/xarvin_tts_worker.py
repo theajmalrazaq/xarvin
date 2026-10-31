@@ -1,17 +1,28 @@
 #!/usr/bin/env python3
+"""XARVIN streaming TTS worker.
+
+Protocol (JSON lines over stdin/stdout):
+  in : {"cmd": "speak", "text": "..."}   queue a sentence (non-blocking)
+       {"cmd": "stop"}                   interrupt + flush queue
+       {"cmd": "ping"}
+  out: {"event": "ready", ...}
+       {"event": "playing", "text": "..."}  audio for this sentence actually started
+       {"event": "done", "text": "..."}     audio for this sentence fully finished
+       {"event": "stopped"} / {"event": "pong"}
+
+Each sentence is played by its own mpv process (clean, no distortion). While one
+sentence plays, the next one is already being fetched, so gaps stay minimal.
+"""
 import os
 import sys
 import re
 import json
-import time
 import queue
-import shutil
 import threading
 import subprocess
 import urllib.request
 from pathlib import Path
 
-# Resolve base directories
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = SCRIPT_DIR.parent
 ENV_FILE = Path(os.environ.get("XARVIN_ENV", PROJECT_DIR / "config" / "xarvin.env"))
@@ -30,143 +41,172 @@ DEEPGRAM_API_KEY = CONFIG.get("DEEPGRAM_API_KEY", "")
 DEEPGRAM_VOICE = CONFIG.get("DEEPGRAM_VOICE", "aura-2-orion-en")
 
 ELEVENLABS_API_KEY = CONFIG.get("ELEVENLABS_API_KEY", "")
-ELEVENLABS_VOICE_ID = CONFIG.get("ELEVENLABS_VOICE_ID", "xcy4I5tPh94DVcviSzGr") # Naveen or configured
+ELEVENLABS_VOICE_ID = CONFIG.get("ELEVENLABS_VOICE_ID", "xcy4I5tPh94DVcviSzGr")
 ELEVENLABS_MODEL = CONFIG.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
 
 SILENCE_MP3_PATH = SCRIPT_DIR / "silence_preroll.mp3"
 SILENCE_PREROLL = SILENCE_MP3_PATH.read_bytes() if SILENCE_MP3_PATH.exists() else b""
 
+PLAYER_CMD = ["mpv", "--no-video", "--no-terminal", "--really-quiet",
+              "--audio-stream-silence=yes", "--audio-buffer=0.2", "-"]
+
+out_lock = threading.Lock()
+
+
+def emit(obj):
+    with out_lock:
+        sys.stdout.write(json.dumps(obj) + "\n")
+        sys.stdout.flush()
+
+
 def clean_for_speech(text: str) -> str:
     if not text:
         return ""
-    # Strip markdown code blocks and inline code
     text = re.sub(r"```[\s\S]*?```", " ", text)
     text = re.sub(r"`([^`]+)`", r"\1", text)
-    # Strip markdown links [label](url) -> label
     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
-    # Strip markdown headers, bold, italics, bullets, blockquotes
     text = re.sub(r"[#*_~`>]", " ", text)
     text = re.sub(r"^\s*[-+*]\s+", "", text, flags=re.MULTILINE)
     text = re.sub(r"^\s*\d+\.\s+", "", text, flags=re.MULTILINE)
-    # Normalize whitespace
-    text = re.sub(r"\s+", " ", text).strip()
-    return text
+    return re.sub(r"\s+", " ", text).strip()
 
-def get_audio_player_cmd():
-    # mpv is the gold standard for jitter-buffered stdin audio streaming without distortion
-    if shutil.which("mpv"):
-        return ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.25", "-"]
-    elif shutil.which("pw-play"):
-        return ["pw-play", "--latency=50ms", "-"]
-    elif shutil.which("paplay"):
-        return ["paplay"]
-    elif shutil.which("ffplay"):
-        return ["ffplay", "-nodisp", "-autoexit", "-"]
-    return ["mpv", "-"]
 
-# Thread-safe continuous audio playback engine
-audio_queue = queue.Queue()
-stop_flag = threading.Event()
-current_player = None
-player_lock = threading.Lock()
-
-def playback_worker():
-    global current_player
-    last_active_time = time.time()
-    
-    while True:
+def open_tts_stream(text):
+    """Return an open HTTP response streaming MP3 audio, or None."""
+    if TTS_ENGINE == "deepgram" and DEEPGRAM_API_KEY:
         try:
-            item = audio_queue.get(timeout=0.1)
-        except queue.Empty:
-            # Idle timeout: close running player after 1.5 seconds of queue emptiness
-            with player_lock:
-                if current_player and current_player.poll() is None:
-                    if time.time() - last_active_time > 1.5:
-                        try:
-                            if current_player.stdin:
-                                current_player.stdin.close()
-                            current_player.wait(timeout=2.0)
-                        except Exception:
-                            pass
-                        current_player = None
-            continue
+            req = urllib.request.Request(
+                f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}",
+                data=json.dumps({"text": text[:800]}).encode("utf-8"),
+                headers={"Authorization": f"Token {DEEPGRAM_API_KEY}",
+                         "Content-Type": "application/json"},
+                method="POST")
+            resp = urllib.request.urlopen(req, timeout=10)
+            if resp.status == 200:
+                return resp
+        except Exception as e:
+            sys.stderr.write(f"[TTS] Deepgram error: {e}\n")
+    if ELEVENLABS_API_KEY:
+        try:
+            req = urllib.request.Request(
+                f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?optimize_streaming_latency=3",
+                data=json.dumps({"text": text[:800], "model_id": ELEVENLABS_MODEL,
+                                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}}).encode("utf-8"),
+                headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json",
+                         "Accept": "audio/mpeg"},
+                method="POST")
+            resp = urllib.request.urlopen(req, timeout=12)
+            if resp.status == 200:
+                return resp
+        except Exception as e:
+            sys.stderr.write(f"[TTS] ElevenLabs error: {e}\n")
+    return None
 
-        if item is None: # Sentinel
-            continue
 
-        # item is list of raw audio chunks (bytes)
-        with player_lock:
-            if stop_flag.is_set():
-                continue
+class Job:
+    """One sentence: audio chunks are fetched in the background into self.chunks."""
 
-            if current_player is None or current_player.poll() is not None:
-                try:
-                    current_player = subprocess.Popen(
-                        get_audio_player_cmd(),
-                        stdin=subprocess.PIPE,
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL
-                    )
-                    if SILENCE_PREROLL and current_player.stdin:
-                        try:
-                            current_player.stdin.write(SILENCE_PREROLL)
-                            current_player.stdin.flush()
-                        except Exception:
-                            pass
-                except Exception as e:
-                    sys.stderr.write(f"[TTS] Failed to spawn audio player: {e}\n")
-                    current_player = None
-                    continue
+    def __init__(self, text, gen):
+        self.text = text
+        self.gen = gen
+        self.chunks = queue.Queue()
+        threading.Thread(target=self._fetch, daemon=True).start()
 
-            for chunk in item:
-                if stop_flag.is_set() or current_player.poll() is not None:
-                    break
-                try:
-                    current_player.stdin.write(chunk)
-                    current_player.stdin.flush()
-                except (BrokenPipeError, OSError):
-                    break
-
-            last_active_time = time.time()
-
-def terminate_player():
-    global current_player
-    with player_lock:
-        stop_flag.set()
-        # Empty queue
-        while not audio_queue.empty():
+    def _fetch(self):
+        resp = open_tts_stream(self.text)
+        try:
+            if resp is not None:
+                while True:
+                    if self.gen != state["gen"]:
+                        break
+                    c = resp.read(4096)
+                    if not c:
+                        break
+                    self.chunks.put(c)
+        except Exception as e:
+            sys.stderr.write(f"[TTS] stream error: {e}\n")
+        finally:
+            self.chunks.put(None)  # end marker
             try:
-                audio_queue.get_nowait()
-            except queue.Empty:
-                break
-        if current_player and current_player.poll() is None:
-            try:
-                current_player.terminate()
-                current_player.wait(timeout=0.15)
+                if resp is not None:
+                    resp.close()
             except Exception:
                 pass
-        current_player = None
-        stop_flag.clear()
+
+
+state = {"gen": 0, "player": None}
+jobs = queue.Queue()
+player_lock = threading.Lock()
+
+
+def player_loop():
+    while True:
+        job = jobs.get()
+        if job.gen != state["gen"]:
+            continue
+        player = None
+        started = False
+        try:
+            while True:
+                c = job.chunks.get()
+                if c is None or job.gen != state["gen"]:
+                    break
+                if player is None:
+                    with player_lock:
+                        if job.gen != state["gen"]:
+                            break
+                        player = subprocess.Popen(PLAYER_CMD, stdin=subprocess.PIPE,
+                                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                        state["player"] = player
+                    if SILENCE_PREROLL:
+                        player.stdin.write(SILENCE_PREROLL)
+                    emit({"event": "playing", "text": job.text})
+                    started = True
+                player.stdin.write(c)
+                player.stdin.flush()
+            if player is not None:
+                try:
+                    player.stdin.close()
+                except Exception:
+                    pass
+                if job.gen == state["gen"]:
+                    player.wait(timeout=60)
+        except (BrokenPipeError, OSError, subprocess.TimeoutExpired):
+            pass
+        finally:
+            with player_lock:
+                if state["player"] is player:
+                    state["player"] = None
+        if job.gen == state["gen"]:
+            if not started:
+                sys.stderr.write(f"[TTS] no audio for: {job.text[:60]}\n")
+            emit({"event": "done", "text": job.text})
+
+
+def stop_all():
+    state["gen"] += 1
+    while True:
+        try:
+            jobs.get_nowait()
+        except queue.Empty:
+            break
+    with player_lock:
+        p = state["player"]
+        state["player"] = None
+    if p and p.poll() is None:
+        try:
+            p.terminate()
+            p.wait(timeout=0.3)
+        except Exception:
+            pass
+
 
 def main():
-    active_engine = TTS_ENGINE
-    if active_engine == "deepgram" and not DEEPGRAM_API_KEY:
-        active_engine = "elevenlabs" if ELEVENLABS_API_KEY else "piper"
-
-    active_voice = DEEPGRAM_VOICE if active_engine == "deepgram" else ELEVENLABS_VOICE_ID
-    sys.stderr.write(f"[TTS] XARVIN Voice Worker Initialized (Engine: {active_engine}, Voice: {active_voice})\n")
-
-    # Start continuous background playback thread
-    th = threading.Thread(target=playback_worker, daemon=True)
-    th.start()
-
-    # Signal ready
-    sys.stdout.write(json.dumps({
-        "event": "ready",
-        "engine": active_engine,
-        "voice": active_voice
-    }) + "\n")
-    sys.stdout.flush()
+    engine = TTS_ENGINE if (TTS_ENGINE != "deepgram" or DEEPGRAM_API_KEY) else "elevenlabs"
+    voice = DEEPGRAM_VOICE if engine == "deepgram" else ELEVENLABS_VOICE_ID
+    sys.stderr.write(f"[TTS] XARVIN Voice Worker Initialized (Engine: {engine}, Voice: {voice})\n")
+    threading.Thread(target=player_loop, daemon=True).start()
+    emit({"event": "ready", "engine": engine, "voice": voice})
 
     for line in sys.stdin:
         line = line.strip()
@@ -176,113 +216,19 @@ def main():
             req = json.loads(line)
         except Exception:
             continue
-
         cmd = req.get("cmd")
         if cmd == "ping":
-            sys.stdout.write(json.dumps({"event": "pong"}) + "\n")
-            sys.stdout.flush()
+            emit({"event": "pong"})
         elif cmd == "stop":
-            terminate_player()
-            sys.stdout.write(json.dumps({"event": "stopped"}) + "\n")
-            sys.stdout.flush()
-        elif cmd == "wait":
-            # Wait for queued audio to be fed to mpv
-            while not stop_flag.is_set() and not audio_queue.empty():
-                time.sleep(0.05)
-            # Flush stdin so mpv plays out its remaining buffer to the very end
-            with player_lock:
-                if current_player and current_player.poll() is None and current_player.stdin:
-                    try:
-                        current_player.stdin.close()
-                    except Exception:
-                        pass
-            # Wait for mpv to finish
-            while not stop_flag.is_set():
-                with player_lock:
-                    if current_player is None or current_player.poll() is not None:
-                        current_player = None
-                        break
-                time.sleep(0.05)
-            sys.stdout.write(json.dumps({"event": "done"}) + "\n")
-            sys.stdout.flush()
+            stop_all()
+            emit({"event": "stopped"})
         elif cmd == "speak":
-            raw_text = req.get("text", "")
-            clean = clean_for_speech(raw_text)
-            if not clean:
-                sys.stdout.write(json.dumps({"event": "done"}) + "\n")
-                sys.stdout.flush()
+            text = clean_for_speech(req.get("text", ""))
+            if not text:
+                emit({"event": "done", "text": ""})
                 continue
+            jobs.put(Job(text, state["gen"]))  # fetch starts immediately (prefetch)
 
-            success = False
-
-            # 1. Primary: Deepgram Aura Streaming TTS (MP3 bitstream)
-            if active_engine == "deepgram" and DEEPGRAM_API_KEY:
-                try:
-                    url = f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}"
-                    headers = {
-                        "Authorization": f"Token {DEEPGRAM_API_KEY}",
-                        "Content-Type": "application/json"
-                    }
-                    payload = json.dumps({"text": clean[:800]}).encode("utf-8")
-                    http_req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-
-                    chunks = []
-                    with urllib.request.urlopen(http_req, timeout=10) as resp:
-                        if resp.status == 200:
-                            while True:
-                                if stop_flag.is_set():
-                                    break
-                                chunk = resp.read(2048)
-                                if not chunk:
-                                    break
-                                chunks.append(chunk)
-
-                    if chunks and not stop_flag.is_set():
-                        audio_queue.put(chunks)
-                        success = True
-                except Exception as e:
-                    sys.stderr.write(f"[TTS] Deepgram speak error: {e}\n")
-
-            # 2. Secondary: ElevenLabs Streaming TTS (if active)
-            if not success and ELEVENLABS_API_KEY:
-                try:
-                    url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?optimize_streaming_latency=3"
-                    headers = {
-                        "xi-api-key": ELEVENLABS_API_KEY,
-                        "Content-Type": "application/json",
-                        "Accept": "audio/mpeg"
-                    }
-                    payload = json.dumps({
-                        "text": clean[:800],
-                        "model_id": ELEVENLABS_MODEL,
-                        "voice_settings": {
-                            "stability": 0.5,
-                            "similarity_boost": 0.8
-                        }
-                    }).encode("utf-8")
-
-                    http_req = urllib.request.Request(url, data=payload, headers=headers, method="POST")
-
-                    chunks = []
-                    with urllib.request.urlopen(http_req, timeout=12) as resp:
-                        if resp.status == 200:
-                            while True:
-                                if stop_flag.is_set():
-                                    break
-                                chunk = resp.read(2048)
-                                if not chunk:
-                                    break
-                                chunks.append(chunk)
-
-                    if chunks and not stop_flag.is_set():
-                        audio_queue.put(chunks)
-                        success = True
-                except Exception as e:
-                    sys.stderr.write(f"[TTS] ElevenLabs stream error: {e}\n")
-
-            # Reply done immediately so next sentence can be fetched and queued seamlessly
-            sys.stdout.write(json.dumps({"event": "done"}) + "\n")
-            sys.stdout.flush()
 
 if __name__ == "__main__":
     main()

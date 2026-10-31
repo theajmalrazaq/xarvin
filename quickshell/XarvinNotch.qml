@@ -61,8 +61,8 @@ PanelWindow {
         if (orbStateOpt !== "auto") return orbStateOpt;
         switch (notchWin.status) {
             case "listening": return "listening";
-            case "thinking":  return "solving";
-            case "working":   return "working";
+            case "thinking":  return "searching";
+            case "working":   return "solving";
             case "speaking":  return "composing";
             default:          return "searching";
         }
@@ -70,11 +70,11 @@ PanelWindow {
 
     property color coreColor: {
         switch (notchWin.status) {
-            case "listening": return "#60a5fa"; // Soft Blue
-            case "thinking":  return "#f59e0b"; // Warm Amber
-            case "working":   return "#a855f7"; // Vibrant Purple
-            case "speaking":  return "#10b981"; // Emerald Green
-            default:          return "#ffffff"; // Pure White
+            case "listening": return "#5cc8b4";
+            case "thinking":  return "#c39bd3";
+            case "working":   return "#e0a458";
+            case "speaking":  return "#6ab0f3";
+            default:          return "#eeeae2";
         }
     }
 
