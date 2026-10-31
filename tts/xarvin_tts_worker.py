@@ -37,7 +37,7 @@ if ENV_FILE.exists():
                 CONFIG[k.strip()] = v.strip().strip("'\"")
 
 DEEPGRAM_API_KEY = CONFIG.get("DEEPGRAM_API_KEY", "")
-DEEPGRAM_VOICE = CONFIG.get("DEEPGRAM_VOICE", "flux-naveen-en")
+DEEPGRAM_VOICE = CONFIG.get("DEEPGRAM_VOICE", "aura-2-draco-en")
 
 SILENCE_MP3_PATH = SCRIPT_DIR / "silence_preroll.mp3"
 SILENCE_PREROLL = SILENCE_MP3_PATH.read_bytes() if SILENCE_MP3_PATH.exists() else b""

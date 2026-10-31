@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -44,6 +45,61 @@ PanelWindow {
     property string currentTool: ""
     property string currentMessage: ""
     property real tSec: 0.6
+
+    // Flowing word highlight state during speech
+    property var speechWords: []
+    property int activeWordIdx: 0
+    property string lastTrackedSentence: ""
+
+    function resetWordFlow(sentence) {
+        var trimmed = (sentence || "").trim();
+        if (trimmed.length === 0) {
+            notchWin.speechWords = [];
+            notchWin.activeWordIdx = 0;
+            return;
+        }
+        notchWin.speechWords = trimmed.split(/\s+/);
+        notchWin.activeWordIdx = 0;
+        wordFlowAnim.enabled = false;
+        wordRow.x = 18;
+        wordFlowAnim.enabled = true;
+        scheduleNextWord(true);
+    }
+
+    function scheduleNextWord(isFirst) {
+        if (notchWin.status !== "speaking" || notchWin.speechWords.length === 0) {
+            wordTimer.stop();
+            return;
+        }
+        var w = notchWin.speechWords[notchWin.activeWordIdx] || "";
+        var dur = 95 + w.length * 46;
+        if (w.endsWith(",") || w.endsWith(";") || w.endsWith(":")) dur += 110;
+        if (isFirst) dur += 160;
+        wordTimer.interval = Math.max(140, Math.min(580, dur));
+        wordTimer.restart();
+    }
+
+    function updateWordRowPosition() {
+        if (!wordRepeater || notchWin.activeWordIdx < 0 || notchWin.activeWordIdx >= wordRepeater.count) return;
+        var item = wordRepeater.itemAt(notchWin.activeWordIdx);
+        if (!item) return;
+        var focusX = 46;
+        var targetX = focusX - item.x;
+        wordRow.x = Math.min(18, targetX);
+    }
+
+    Timer {
+        id: wordTimer
+        repeat: false
+        running: false
+        onTriggered: {
+            if (notchWin.status === "speaking" && notchWin.activeWordIdx + 1 < notchWin.speechWords.length) {
+                notchWin.activeWordIdx += 1;
+                notchWin.updateWordRowPosition();
+                notchWin.scheduleNextWord(false);
+            }
+        }
+    }
 
     // Speech pulsation for dynamic wave animations
     property real speechPulsation: 0.3
@@ -95,6 +151,15 @@ PanelWindow {
                     notchWin.status = s.status || "idle";
                     notchWin.currentTool = s.tool || "";
                     notchWin.currentMessage = s.message || "";
+                    if (notchWin.status === "speaking") {
+                        if (notchWin.currentMessage !== notchWin.lastTrackedSentence) {
+                            notchWin.lastTrackedSentence = notchWin.currentMessage;
+                            notchWin.resetWordFlow(notchWin.currentMessage);
+                        }
+                    } else {
+                        notchWin.lastTrackedSentence = "";
+                        wordTimer.stop();
+                    }
                 }
             } catch (e) {}
         }
@@ -246,10 +311,10 @@ PanelWindow {
                 }
             }
 
-            // Live AI Reasoning / Tool / Speech Text (no italic, no hardcoded prefixes)
+            // Live AI Reasoning / Tool Text (when thinking, working, or listening)
             Item {
                 anchors.fill: parent
-                visible: notchWin.status !== "idle"
+                visible: notchWin.status !== "idle" && notchWin.status !== "speaking"
 
                 Text {
                     id: statusLabel
@@ -264,6 +329,110 @@ PanelWindow {
                     text: notchWin.status === "working"
                         ? (notchWin.currentTool || notchWin.currentMessage)
                         : notchWin.currentMessage
+                }
+            }
+
+            // Live Word-by-Word Highlighting & -X Flow with Blur (when speaking)
+            Item {
+                id: speechFlowBox
+                anchors.fill: parent
+                clip: true
+                visible: notchWin.status === "speaking"
+
+                Row {
+                    id: wordRow
+                    x: 18
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 8
+
+                    Behavior on x {
+                        id: wordFlowAnim
+                        enabled: true
+                        NumberAnimation { duration: 230; easing.type: Easing.OutCubic }
+                    }
+
+                    Repeater {
+                        id: wordRepeater
+                        model: notchWin.speechWords
+
+                        delegate: Item {
+                            id: wordDelegate
+                            readonly property bool isCurrent: index === notchWin.activeWordIdx
+                            readonly property bool isPast: index < notchWin.activeWordIdx
+                            readonly property int dist: Math.abs(index - notchWin.activeWordIdx)
+
+                            width: wordText.implicitWidth + 10
+                            height: 28
+
+                            onXChanged: {
+                                if (isCurrent) notchWin.updateWordRowPosition();
+                            }
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 8
+                                color: "#226ab0f3"
+                                border.color: "#556ab0f3"
+                                border.width: 1
+                                opacity: wordDelegate.isCurrent ? 1.0 : 0.0
+                                Behavior on opacity { NumberAnimation { duration: 180 } }
+                            }
+
+                            Text {
+                                id: wordText
+                                anchors.centerIn: parent
+                                text: modelData
+                                font.family: "JetBrains Mono, Inter, Cantarell, Sans"
+                                font.pixelSize: 13
+                                font.weight: wordDelegate.isCurrent ? Font.DemiBold : Font.Normal
+                                font.italic: false
+                                color: wordDelegate.isCurrent ? "#ffffff" : notchWin.coreColor
+                                visible: false
+                            }
+
+                            MultiEffect {
+                                anchors.fill: wordText
+                                source: wordText
+                                blurEnabled: true
+                                blurMax: 14
+                                blur: wordDelegate.isCurrent ? 0.0 : Math.min(1.0, 0.42 + wordDelegate.dist * 0.16)
+                                opacity: wordDelegate.isCurrent
+                                    ? 1.0
+                                    : (wordDelegate.isPast
+                                        ? Math.max(0.18, 0.45 - wordDelegate.dist * 0.12)
+                                        : Math.max(0.28, 0.62 - wordDelegate.dist * 0.09))
+                                scale: wordDelegate.isCurrent ? 1.05 : 0.96
+
+                                Behavior on blur { NumberAnimation { duration: 190; easing.type: Easing.OutQuad } }
+                                Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.OutQuad } }
+                                Behavior on scale { NumberAnimation { duration: 190; easing.type: Easing.OutQuad } }
+                            }
+                        }
+                    }
+                }
+
+                // Soft left & right edge fade gradients for seamless -x flow
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 22
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#ff000000" }
+                        GradientStop { position: 1.0; color: "#00000000" }
+                    }
+                }
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: 34
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0.0; color: "#00000000" }
+                        GradientStop { position: 1.0; color: "#ff000000" }
+                    }
                 }
             }
         }
