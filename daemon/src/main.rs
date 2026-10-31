@@ -106,11 +106,8 @@ fn write_state(cfg: &Config, status: &str, tool: &str, message: &str) {
         timestamp: now,
     };
     if let Ok(json_str) = serde_json::to_string(&payload) {
-        let tmp = cfg.state_path.with_extension("json.tmp");
-        if std::fs::write(&tmp, json_str.as_bytes()).is_ok() {
-            let _ = std::fs::rename(&tmp, &cfg.state_path);
-        }
-        // Backward compatibility
+        // Direct write preserves file inode so inotify / FileView always receives IN_MODIFY
+        let _ = std::fs::write(&cfg.state_path, json_str.as_bytes());
         let legacy_state = cfg.runtime_dir.join("jarvis-state.json");
         let _ = std::fs::write(&legacy_state, json_str.as_bytes());
     }
@@ -182,6 +179,27 @@ impl PiperWorker {
             let _ = self.stdin.write_all(format!("{}\n", s).as_bytes()).await;
             let _ = self.stdin.flush().await;
         }
+    }
+
+    async fn wait_playback(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let req = serde_json::json!({"cmd": "wait"});
+        self.stdin
+            .write_all(format!("{}\n", serde_json::to_string(&req)?).as_bytes())
+            .await?;
+        self.stdin.flush().await?;
+
+        loop {
+            let mut line = String::new();
+            if self.reader.read_line(&mut line).await? == 0 {
+                break;
+            }
+            if let Ok(ev) = serde_json::from_str::<serde_json::Value>(line.trim()) {
+                if ev.get("event").and_then(|s| s.as_str()) == Some("done") {
+                    break;
+                }
+            }
+        }
+        Ok(())
     }
 }
 
@@ -355,10 +373,14 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
                 break;
             }
             eprintln!("[VOICE:START] speaking: {}", sentence);
-            state_tts.set_status("speaking", "Deepgram Aura", "").await;
+            state_tts.set_status("speaking", "Deepgram Aura", &sentence).await;
             let mut piper = state_tts.piper.lock().await;
             let _ = piper.speak(&sentence).await;
             eprintln!("[VOICE:DONE] finished sentence: {}", sentence);
+        }
+        if !state_tts.cancel_flag.load(Ordering::Relaxed) {
+            let mut piper = state_tts.piper.lock().await;
+            let _ = piper.wait_playback().await;
         }
     });
 

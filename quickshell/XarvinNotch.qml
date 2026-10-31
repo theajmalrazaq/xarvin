@@ -85,15 +85,27 @@ PanelWindow {
         id: stateWatcher
         path: notchWin.statePath
         watchChanges: true
-        onTextChanged: {
-            if (!text || text.length === 0) return;
+        printErrors: false
+        onFileChanged: reload()
+        onLoaded: {
             try {
-                var s = JSON.parse(text);
-                notchWin.status = s.status || "idle";
-                notchWin.currentTool = s.tool || "";
-                notchWin.currentMessage = s.message || "";
+                var str = text();
+                if (str && str.length > 0) {
+                    var s = JSON.parse(str);
+                    notchWin.status = s.status || "idle";
+                    notchWin.currentTool = s.tool || "";
+                    notchWin.currentMessage = s.message || "";
+                }
             } catch (e) {}
         }
+    }
+
+    // Periodic safety sync timer
+    Timer {
+        interval: 150
+        running: notchWin.visible
+        repeat: true
+        onTriggered: stateWatcher.reload()
     }
 
     // 60 FPS animation ticker for 3D Thinking Orb
@@ -114,7 +126,7 @@ PanelWindow {
             promptInput.focus = false;
             Quickshell.execDetached([notchWin.cliBin, "ask", query]);
             promptInput.text = "";
-            notchWin.closeRequested();
+            notchWin.closeRequested(); // Hide immediately until user opens it again
         }
     }
 

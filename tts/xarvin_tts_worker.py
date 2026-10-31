@@ -185,6 +185,26 @@ def main():
             terminate_player()
             sys.stdout.write(json.dumps({"event": "stopped"}) + "\n")
             sys.stdout.flush()
+        elif cmd == "wait":
+            # Wait for queued audio to be fed to mpv
+            while not stop_flag.is_set() and not audio_queue.empty():
+                time.sleep(0.05)
+            # Flush stdin so mpv plays out its remaining buffer to the very end
+            with player_lock:
+                if current_player and current_player.poll() is None and current_player.stdin:
+                    try:
+                        current_player.stdin.close()
+                    except Exception:
+                        pass
+            # Wait for mpv to finish
+            while not stop_flag.is_set():
+                with player_lock:
+                    if current_player is None or current_player.poll() is not None:
+                        current_player = None
+                        break
+                time.sleep(0.05)
+            sys.stdout.write(json.dumps({"event": "done"}) + "\n")
+            sys.stdout.flush()
         elif cmd == "speak":
             raw_text = req.get("text", "")
             clean = clean_for_speech(raw_text)

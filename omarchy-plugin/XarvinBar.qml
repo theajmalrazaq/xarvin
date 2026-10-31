@@ -10,7 +10,6 @@ BarWidget {
   moduleName: "io.github.xarvin"
 
   readonly property string statePath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/xarvin-state.json"
-  readonly property string legacyStatePath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/jarvis-state.json"
 
   property string status: "idle"
   property real tSec: 0.6
@@ -19,12 +18,20 @@ BarWidget {
   implicitWidth: root.vertical ? root.barSize : Style.bar.iconSlot
   implicitHeight: root.vertical ? Style.bar.iconSlot : root.barSize
 
-  readonly property real audioLevel: (root.status === "speaking" || root.status === "listening") ? 0.6 : 0
+  property real speechPulsation: 0.3
+  SequentialAnimation on speechPulsation {
+    running: root.status === "speaking"
+    loops: Animation.Infinite
+    NumberAnimation { to: 0.95; duration: 420; easing.type: Easing.InOutQuad }
+    NumberAnimation { to: 0.35; duration: 380; easing.type: Easing.InOutQuad }
+  }
+
+  readonly property real audioLevel: (root.status === "speaking") ? speechPulsation : ((root.status === "listening") ? 0.6 : 0)
 
   readonly property string activeOrbState: {
     if (root.status === "listening") return "listening"
-    if (root.status === "working")   return "solving"
-    if (root.status === "thinking")  return "searching"
+    if (root.status === "working")   return "working"
+    if (root.status === "thinking")  return "solving"
     if (root.status === "speaking")  return "composing"
     return "searching" // Globe Halftone
   }
@@ -50,18 +57,30 @@ BarWidget {
     }
   }
 
-  // Watch state file
+  // Exact Quickshell FileView file watcher pattern
   FileView {
     id: stateWatcher
     path: root.statePath
     watchChanges: true
-    onTextChanged: {
-      if (!text || text.length === 0) return;
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
       try {
-        var s = JSON.parse(text);
-        root.status = s.status || "idle";
+        var str = text();
+        if (str && str.length > 0) {
+          var s = JSON.parse(str);
+          root.status = s.status || "idle";
+        }
       } catch (e) {}
     }
+  }
+
+  // Periodic safety reload timer (150ms)
+  Timer {
+    interval: 150
+    running: true
+    repeat: true
+    onTriggered: stateWatcher.reload()
   }
 
   Canvas {
