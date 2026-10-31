@@ -36,13 +36,8 @@ if ENV_FILE.exists():
                 k, v = line.split("=", 1)
                 CONFIG[k.strip()] = v.strip().strip("'\"")
 
-TTS_ENGINE = CONFIG.get("TTS_ENGINE", "deepgram").lower()
 DEEPGRAM_API_KEY = CONFIG.get("DEEPGRAM_API_KEY", "")
 DEEPGRAM_VOICE = CONFIG.get("DEEPGRAM_VOICE", "aura-2-orion-en")
-
-ELEVENLABS_API_KEY = CONFIG.get("ELEVENLABS_API_KEY", "")
-ELEVENLABS_VOICE_ID = CONFIG.get("ELEVENLABS_VOICE_ID", "xcy4I5tPh94DVcviSzGr")
-ELEVENLABS_MODEL = CONFIG.get("ELEVENLABS_MODEL", "eleven_turbo_v2_5")
 
 SILENCE_MP3_PATH = SCRIPT_DIR / "silence_preroll.mp3"
 SILENCE_PREROLL = SILENCE_MP3_PATH.read_bytes() if SILENCE_MP3_PATH.exists() else b""
@@ -72,8 +67,8 @@ def clean_for_speech(text: str) -> str:
 
 
 def open_tts_stream(text):
-    """Return an open HTTP response streaming MP3 audio, or None."""
-    if TTS_ENGINE == "deepgram" and DEEPGRAM_API_KEY:
+    """Return an open HTTP response streaming MP3 audio from Deepgram Aura 2, or None."""
+    if DEEPGRAM_API_KEY:
         try:
             req = urllib.request.Request(
                 f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}",
@@ -86,20 +81,6 @@ def open_tts_stream(text):
                 return resp
         except Exception as e:
             sys.stderr.write(f"[TTS] Deepgram error: {e}\n")
-    if ELEVENLABS_API_KEY:
-        try:
-            req = urllib.request.Request(
-                f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?optimize_streaming_latency=3",
-                data=json.dumps({"text": text[:800], "model_id": ELEVENLABS_MODEL,
-                                 "voice_settings": {"stability": 0.5, "similarity_boost": 0.8}}).encode("utf-8"),
-                headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json",
-                         "Accept": "audio/mpeg"},
-                method="POST")
-            resp = urllib.request.urlopen(req, timeout=12)
-            if resp.status == 200:
-                return resp
-        except Exception as e:
-            sys.stderr.write(f"[TTS] ElevenLabs error: {e}\n")
     return None
 
 
@@ -202,11 +183,9 @@ def stop_all():
 
 
 def main():
-    engine = TTS_ENGINE if (TTS_ENGINE != "deepgram" or DEEPGRAM_API_KEY) else "elevenlabs"
-    voice = DEEPGRAM_VOICE if engine == "deepgram" else ELEVENLABS_VOICE_ID
-    sys.stderr.write(f"[TTS] XARVIN Voice Worker Initialized (Engine: {engine}, Voice: {voice})\n")
+    sys.stderr.write(f"[TTS] XARVIN Voice Worker Initialized (Engine: deepgram, Voice: {DEEPGRAM_VOICE})\n")
     threading.Thread(target=player_loop, daemon=True).start()
-    emit({"event": "ready", "engine": engine, "voice": voice})
+    emit({"event": "ready", "engine": "deepgram", "voice": DEEPGRAM_VOICE})
 
     for line in sys.stdin:
         line = line.strip()

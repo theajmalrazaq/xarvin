@@ -33,7 +33,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
   - `working`: Dynamic orbital particle spinning
   - `speaking`: Organic waveform and audio ripple pulsations
   - `listening`: Responsive audio waves
-- **Streaming Neural Voice AI (Deepgram Aura 2)**: Continuous, jitter-buffered real-time MP3 streaming via `mpv` with sub-200ms latency, zero gap between sentences, and zero local CPU load. Also supports ElevenLabs as an alternative engine.
+- **Streaming Neural Voice AI (Deepgram Aura 2)**: Continuous, jitter-buffered real-time MP3 streaming via `mpv` with sub-200ms latency, zero gap between sentences, and zero local CPU load.
 - **Zero-Latency Rust Daemon**: Native async Rust daemon (`xarvin-daemon`) keeping an active warm Antigravity CLI brain session in memory with zero cold-start delay.
 - **Tool & Agent Integrations**:
   - **Composio MCP**: System management, calendar, browser, and developer integrations.
@@ -68,7 +68,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
 [Speech Synthesis Worker (xarvin_tts_worker.py)]
        │
        ▼ (Streaming Audio API)
-[Deepgram Aura 2 / ElevenLabs]
+[Deepgram Aura 2]
        │
        ▼ (Streaming MP3 / Pipelined)
 [mpv (PipeWire Output)]
@@ -123,15 +123,10 @@ nano ~/Projects/xarvin/config/xarvin.env
 # XARVIN Configuration
 ASSISTANT_NAME=XARVIN
 
-# Primary High-Performance Cloud TTS (Deepgram Aura 2)
+# Cloud TTS (Deepgram Aura 2)
 TTS_ENGINE=deepgram
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
 DEEPGRAM_VOICE=aura-2-orion-en
-
-# Optional ElevenLabs Settings (Alternative engine)
-ELEVENLABS_API_KEY=your_elevenlabs_key_here
-ELEVENLABS_VOICE_ID=xcy4I5tPh94DVcviSzGr
-ELEVENLABS_MODEL=eleven_turbo_v2_5
 ```
 
 After modifying credentials, restart the services:
@@ -207,7 +202,7 @@ xarvin/
 │   ├── xarvin.service              # Systemd user service for Rust background brain
 │   └── xarvin-ui.service           # Systemd user service for Quickshell UI overlay
 ├── tts/
-│   ├── xarvin_tts_worker.py        # Streaming TTS worker (Deepgram Aura 2 & ElevenLabs)
+│   ├── xarvin_tts_worker.py        # Streaming TTS worker (Deepgram Aura 2)
 │   ├── silence_preroll.mp3         # Hardware DAC sleep-prevention preroll
 │   └── requirements.txt            # Python dependencies
 ├── install.sh                      # Fully automated one-click setup script
