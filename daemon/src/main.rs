@@ -353,6 +353,23 @@ impl DaemonState {
     }
 }
 
+fn format_tool_name(raw: &str) -> String {
+    let lower = raw.to_lowercase();
+    if lower.contains("octopus") {
+        "WhatsApp".to_string()
+    } else if lower.contains("composio") {
+        "Composio".to_string()
+    } else if lower.contains("brief") {
+        "System Brief".to_string()
+    } else if lower.contains("bash") || lower.contains("run_command") {
+        "System Command".to_string()
+    } else if lower.contains("file") {
+        "File System".to_string()
+    } else {
+        raw.replace('_', " ")
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Text Turn Pipeline Worker (Notch Input -> AGY -> Talks Back Out Loud)
 // ---------------------------------------------------------------------------
@@ -373,7 +390,7 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
                 break;
             }
             eprintln!("[VOICE:START] speaking: {}", sentence);
-            state_tts.set_status("speaking", "Deepgram Aura", &sentence).await;
+            state_tts.set_status("speaking", "", &sentence).await;
             let mut piper = state_tts.piper.lock().await;
             let _ = piper.speak(&sentence).await;
             eprintln!("[VOICE:DONE] finished sentence: {}", sentence);
@@ -385,7 +402,7 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
     });
 
     // 2. Send to Persistent Warm Agy Process
-    state.set_status("thinking", "Antigravity CLI", "").await;
+    state.set_status("thinking", "", "Thinking...").await;
 
     let prompt = format!(
         "{}\n\n[Voice Mode: Your name is XARVIN. You are a sharp, casual, and friendly AI companion. Talk naturally and casually — strictly NEVER say 'sir', 'master', or use formal honorifics. Speak exclusively in English with a relaxed, modern conversational tone. Never use markdown, bullets, asterisks, emoji, or lists. Keep your spoken response to 1-2 concise, natural sentences. For general app actions, integrations, and tools, always use Composio MCP (`composio` tools). For WhatsApp messaging, contacts, groups, or status, always use Octopus MCP (`octopus` tools like `octopus_send_message`, `octopus_list_contacts`, `octopus_status`). For 'system brief', run `python3 ~/.gemini/config/skills/brief/scripts/system_brief.py`. For 'news brief', run `python3 ~/.gemini/config/skills/brief/scripts/news_brief.py`. For 'today brief', run `python3 ~/.gemini/config/skills/brief/scripts/today_brief.py`. Always execute tools or MCP actions immediately and casually report what happened.]",
@@ -425,10 +442,22 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
                                 let stype = su.get("step_type").and_then(|s| s.as_str()).unwrap_or("");
                                 let step_state = su.get("state").and_then(|s| s.as_str()).unwrap_or("");
 
-                                if stype == "tool" && step_state == "ACTIVE" {
-                                    let tool_name = su.get("tool_name").and_then(|s| s.as_str()).unwrap_or("tool");
-                                    eprintln!("[NOTCH:TOOL] {}", tool_name);
-                                    state.set_status("working", tool_name, "").await;
+                                if stype == "tool" {
+                                    if step_state == "ACTIVE" || step_state == "RUNNING" {
+                                        let tool_name = su.get("tool_name").and_then(|s| s.as_str()).unwrap_or("tool");
+                                        let formatted = format_tool_name(tool_name);
+                                        eprintln!("[NOTCH:TOOL] {}", formatted);
+                                        state.set_status("working", &formatted, "Executing action...").await;
+                                    } else if step_state == "COMPLETED" || step_state == "DONE" {
+                                        state.set_status("thinking", "", "Processing results...").await;
+                                    }
+                                } else if stype == "thought" || stype == "thinking" {
+                                    if let Some(th) = su.get("thought").or_else(|| su.get("text_delta")).and_then(|s| s.as_str()) {
+                                        let trimmed = th.trim();
+                                        if !trimmed.is_empty() {
+                                            state.set_status("thinking", "", trimmed).await;
+                                        }
+                                    }
                                 } else if stype == "agent_response" {
                                     if let Some(delta) = su.get("text_delta").and_then(|s| s.as_str()) {
                                         streamed_text.push_str(delta);
