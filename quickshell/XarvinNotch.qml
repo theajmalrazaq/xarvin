@@ -185,6 +185,17 @@ PanelWindow {
                     Orbs.drawOrb(ctx, width, mode, t, true, tint, audio);
                 }
             }
+
+            // Click orb to stop speech/action if active
+            MouseArea {
+                anchors.fill: parent
+                cursorShape: notchWin.status !== "idle" ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: {
+                    if (notchWin.status !== "idle") {
+                        Quickshell.execDetached([notchWin.cliBin, "stop"]);
+                    }
+                }
+            }
         }
 
         // Interactive Input Field (Center)
@@ -236,9 +247,9 @@ PanelWindow {
         Row {
             id: actionRow
             anchors.right: parent.right
-            anchors.rightMargin: 10
+            anchors.rightMargin: 12
             anchors.verticalCenter: parent.verticalCenter
-            spacing: 6
+            spacing: 8
 
             // Clear Input Button (Lucide X)
             Rectangle {
@@ -259,20 +270,12 @@ PanelWindow {
                     preferredRendererType: Shape.CurveRenderer
 
                     ShapePath {
-                        strokeColor: clearMouse.containsMouse ? "#ffffff" : "#888888"
-                        strokeWidth: 2
-                        capStyle: ShapePath.RoundCap
+                        strokeColor: clearMouse.containsMouse ? "#ffffff" : "#999999"
+                        strokeWidth: 2.2
                         fillColor: "transparent"
-                        PathMove { x: 18; y: 6 }
-                        PathLine { x: 6; y: 18 }
-                    }
-                    ShapePath {
-                        strokeColor: clearMouse.containsMouse ? "#ffffff" : "#888888"
-                        strokeWidth: 2
                         capStyle: ShapePath.RoundCap
-                        fillColor: "transparent"
-                        PathMove { x: 6; y: 6 }
-                        PathLine { x: 18; y: 18 }
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg { path: "M18 6L6 18M6 6L18 18" }
                     }
                 }
 
@@ -288,6 +291,41 @@ PanelWindow {
                 }
             }
 
+            // Submit Prompt Button (Lucide CornerDownLeft)
+            Rectangle {
+                id: sendBtn
+                visible: promptInput.text.trim().length > 0
+                width: 30
+                height: 30
+                radius: 15
+                color: sendMouse.containsMouse ? "#ffffff" : "#e0e0e0"
+
+                Shape {
+                    anchors.centerIn: parent
+                    width: 24
+                    height: 24
+                    scale: 14 / 24
+                    preferredRendererType: Shape.CurveRenderer
+
+                    ShapePath {
+                        strokeColor: "#000000"
+                        strokeWidth: 2.4
+                        fillColor: "transparent"
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg { path: "M9 10L4 15L9 20M20 4V11C20 13.2091 18.2091 15 16 15H4" }
+                    }
+                }
+
+                MouseArea {
+                    id: sendMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: notchWin.submitPrompt()
+                }
+            }
+
             // Stop / Interrupt Button (Lucide Square)
             Rectangle {
                 id: stopBtn
@@ -296,7 +334,7 @@ PanelWindow {
                 height: 28
                 radius: 14
                 color: stopMouse.containsMouse ? "#1c1c1c" : "#121212"
-                border.color: "#222222"
+                border.color: notchWin.coreColor
                 border.width: 1
 
                 Shape {
@@ -308,10 +346,12 @@ PanelWindow {
 
                     ShapePath {
                         strokeColor: notchWin.coreColor
-                        strokeWidth: 2
+                        strokeWidth: 2.2
                         fillColor: notchWin.coreColor
+                        capStyle: ShapePath.RoundCap
+                        joinStyle: ShapePath.RoundJoin
                         PathSvg {
-                            path: "M9 9h6v6H9z"
+                            path: "M5 3H19C20.1046 3 21 3.89543 21 5V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3Z"
                         }
                     }
                 }
@@ -342,24 +382,16 @@ PanelWindow {
                     anchors.centerIn: parent
                     width: 24
                     height: 24
-                    scale: 13 / 24
+                    scale: 12 / 24
                     preferredRendererType: Shape.CurveRenderer
 
                     ShapePath {
-                        strokeColor: closeMouse.containsMouse ? "#ff4757" : "#666666"
-                        strokeWidth: 2
-                        capStyle: ShapePath.RoundCap
+                        strokeColor: closeMouse.containsMouse ? "#ff4757" : "#888888"
+                        strokeWidth: 2.0
                         fillColor: "transparent"
-                        PathMove { x: 18; y: 6 }
-                        PathLine { x: 6; y: 18 }
-                    }
-                    ShapePath {
-                        strokeColor: closeMouse.containsMouse ? "#ff4757" : "#666666"
-                        strokeWidth: 2
                         capStyle: ShapePath.RoundCap
-                        fillColor: "transparent"
-                        PathMove { x: 6; y: 6 }
-                        PathLine { x: 18; y: 18 }
+                        joinStyle: ShapePath.RoundJoin
+                        PathSvg { path: "M18 6L6 18M6 6L18 18" }
                     }
                 }
 
