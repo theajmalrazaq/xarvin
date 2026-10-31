@@ -52,27 +52,17 @@ def clean_for_speech(text: str) -> str:
 def get_audio_player_cmd(format_hint="wav"):
     """
     Returns an audio playback command that reads audio chunks from stdin.
-    Prefers native PipeWire (pw-play) for raw/WAV streams without external video player dependencies.
-    Falls back to mpv, paplay, aplay, or ffplay.
+    Uses native PipeWire (pw-play) or standard PulseAudio / ALSA.
     """
-    if format_hint == "wav":
-        if shutil.which("pw-play"):
-            return ["pw-play", "--latency=50ms", "-"]
-        elif shutil.which("paplay"):
-            return ["paplay"]
-        elif shutil.which("aplay"):
-            return ["aplay", "-q", "-"]
-        elif shutil.which("mpv"):
-            return ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.1", "-"]
-        elif shutil.which("ffplay"):
-            return ["ffplay", "-nodisp", "-autoexit", "-"]
-    else: # mp3 or generic stream
-        if shutil.which("mpv"):
-            return ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.1", "-"]
-        elif shutil.which("pw-play"):
-            return ["pw-play", "--latency=50ms", "-"]
-        elif shutil.which("ffplay"):
-            return ["ffplay", "-nodisp", "-autoexit", "-"]
+    if shutil.which("pw-play"):
+        return ["pw-play", "--latency=50ms", "-"]
+    elif shutil.which("paplay"):
+        return ["paplay"]
+    elif shutil.which("aplay"):
+        return ["aplay", "-q", "-"]
+    elif shutil.which("ffplay"):
+        return ["ffplay", "-nodisp", "-autoexit", "-"]
+    return ["pw-play", "-"]
     return ["pw-play", "-"]
 
 def main():

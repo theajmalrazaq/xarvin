@@ -28,9 +28,9 @@ for cmd in cargo rustc python3 quickshell; do
     fi
 done
 
-# Audio backend check (native PipeWire pw-play preferred, mpv/paplay/aplay fallback)
+# Audio backend check (native PipeWire pw-play preferred, paplay/aplay fallback)
 AUDIO_BACKEND=""
-for p in pw-play mpv paplay aplay; do
+for p in pw-play paplay aplay; do
     if command -v "$p" >/dev/null 2>&1; then
         AUDIO_BACKEND="$p"
         break
@@ -38,7 +38,7 @@ for p in pw-play mpv paplay aplay; do
 done
 
 if [ -z "$AUDIO_BACKEND" ]; then
-    MISSING_DEPS+=("pw-play (or mpv)")
+    MISSING_DEPS+=("pipewire (pw-play)")
 fi
 
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
