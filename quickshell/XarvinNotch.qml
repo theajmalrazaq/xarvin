@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Shapes
-import QtQuick.Effects
 import Quickshell
 import Quickshell.Wayland
 import Quickshell.Io
@@ -391,23 +390,12 @@ PanelWindow {
                                 font.weight: wordDelegate.isCurrent ? Font.Medium : Font.Normal
                                 font.italic: false
                                 color: wordDelegate.isCurrent ? "#ffffff" : notchWin.coreColor
-                                visible: false
-                            }
-
-                            MultiEffect {
-                                anchors.fill: wordText
-                                source: wordText
-                                blurEnabled: true
-                                blurMax: 14
-                                blur: wordDelegate.isCurrent ? 0.0 : Math.min(1.0, 0.42 + wordDelegate.dist * 0.16)
                                 opacity: wordDelegate.isCurrent
                                     ? 1.0
-                                    : (wordDelegate.isPast
-                                        ? Math.max(0.18, 0.45 - wordDelegate.dist * 0.12)
-                                        : Math.max(0.28, 0.62 - wordDelegate.dist * 0.09))
+                                    : (wordDelegate.isPast ? 0.45 : 0.65)
 
-                                Behavior on blur { NumberAnimation { duration: 170; easing.type: Easing.OutQuad } }
-                                Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutQuad } }
+                                Behavior on color { ColorAnimation { duration: 150 } }
+                                Behavior on opacity { NumberAnimation { duration: 150; easing.type: Easing.OutQuad } }
                             }
                         }
                     }
