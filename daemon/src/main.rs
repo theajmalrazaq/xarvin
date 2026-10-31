@@ -413,7 +413,7 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
     });
 
     // 2. Send to Persistent Warm Agy Process
-    state.set_status("thinking", "", "Thinking...").await;
+    state.set_status("thinking", "", &text).await;
 
     let prompt = format!(
         "{}\n\n[Voice Mode: Your name is XARVIN. You are a sharp, casual, and friendly AI companion. Talk naturally and casually — strictly NEVER say 'sir', 'master', or use formal honorifics. Speak exclusively in English with a relaxed, modern conversational tone. Never use markdown, bullets, asterisks, emoji, or lists. Keep your spoken response to 1-2 concise, natural sentences. For general app actions, integrations, and tools, always use Composio MCP (`composio` tools). For WhatsApp messaging, contacts, groups, or status, always use Octopus MCP (`octopus` tools like `octopus_send_message`, `octopus_list_contacts`, `octopus_status`). For 'system brief', run `python3 ~/.gemini/config/skills/brief/scripts/system_brief.py`. For 'news brief', run `python3 ~/.gemini/config/skills/brief/scripts/news_brief.py`. For 'today brief', run `python3 ~/.gemini/config/skills/brief/scripts/today_brief.py`. Always execute tools or MCP actions immediately and casually report what happened.]",
@@ -438,6 +438,8 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
 
     let sentence_re = Regex::new(r"^([\s\S]+?[.!?])(?:\s+|$)").unwrap();
     let mut streamed_text = String::new();
+    let mut thinking_text = String::new();
+    let mut last_thought = text.clone();
     let mut spoken_upto = 0;
     let mut spoken_count = 0;
     let mut final_response = String::new();
@@ -453,20 +455,51 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
                                 let stype = su.get("step_type").and_then(|s| s.as_str()).unwrap_or("");
                                 let step_state = su.get("state").and_then(|s| s.as_str()).unwrap_or("");
 
+                                // Stream live AI reasoning / thinking updates whenever present
+                                if let Some(th) = su
+                                    .get("thinking_delta")
+                                    .or_else(|| su.get("thinking"))
+                                    .or_else(|| su.get("thought"))
+                                    .and_then(|s| s.as_str())
+                                {
+                                    thinking_text.push_str(th);
+                                    if let Some(line) = thinking_text
+                                        .lines()
+                                        .rev()
+                                        .map(|l| l.trim().trim_matches('*').trim())
+                                        .find(|l| !l.is_empty())
+                                    {
+                                        last_thought = line.to_string();
+                                        let cur = { state.status.read().await.clone() };
+                                        if cur != "speaking" && cur != "working" {
+                                            state.set_status("thinking", "", &last_thought).await;
+                                        }
+                                    }
+                                }
+
                                 if stype == "tool" {
                                     if step_state == "ACTIVE" || step_state == "RUNNING" {
                                         let tool_name = su.get("tool_name").and_then(|s| s.as_str()).unwrap_or("tool");
                                         let formatted = format_tool_name(tool_name);
-                                        eprintln!("[NOTCH:TOOL] {}", formatted);
-                                        state.set_status("working", &formatted, "Executing action...").await;
+                                        let params = su.get("tool_info").and_then(|ti| ti.get("parameters"));
+                                        let tool_desc = params
+                                            .and_then(|p| {
+                                                p.get("toolSummary")
+                                                    .or_else(|| p.get("ToolName"))
+                                                    .or_else(|| p.get("query"))
+                                                    .or_else(|| p.get("Path"))
+                                                    .or_else(|| p.get("CommandLine"))
+                                                    .and_then(|v| v.as_str())
+                                            })
+                                            .map(|s| s.trim().to_string())
+                                            .filter(|s| !s.is_empty())
+                                            .unwrap_or(formatted);
+                                        eprintln!("[NOTCH:TOOL] {}", tool_desc);
+                                        state.set_status("working", &tool_desc, &tool_desc).await;
                                     } else if step_state == "COMPLETED" || step_state == "DONE" {
-                                        state.set_status("thinking", "", "Processing results...").await;
-                                    }
-                                } else if stype == "thought" || stype == "thinking" {
-                                    if let Some(th) = su.get("thought").or_else(|| su.get("text_delta")).and_then(|s| s.as_str()) {
-                                        let trimmed = th.trim();
-                                        if !trimmed.is_empty() {
-                                            state.set_status("thinking", "", trimmed).await;
+                                        let cur = { state.status.read().await.clone() };
+                                        if cur != "speaking" {
+                                            state.set_status("thinking", "", &last_thought).await;
                                         }
                                     }
                                 } else if stype == "agent_response" {
@@ -491,7 +524,7 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
                             }
                         } else if etype == "result" {
                             if let Some(res) = ev.get("result") {
-                                if let Some(content) = res.get("content").and_then(|s| s.as_str()) {
+                                if let Some(content) = res.get("response").or_else(|| res.get("content")).and_then(|s| s.as_str()) {
                                     final_response = content.trim().to_string();
                                 }
                             }

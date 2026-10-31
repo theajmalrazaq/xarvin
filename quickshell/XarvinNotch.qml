@@ -120,6 +120,7 @@ PanelWindow {
     }
 
     function submitPrompt() {
+        if (notchWin.status !== "idle") return;
         var query = promptInput.text.trim();
         if (query.length > 0) {
             promptInput.focus = false;
@@ -145,10 +146,11 @@ PanelWindow {
         border.color: "#121212"
         border.width: 1.5
 
-        // Click anywhere on bar to focus text input
+        // Click anywhere on bar to focus text input (only when idle)
         MouseArea {
             anchors.fill: parent
-            cursorShape: Qt.IBeamCursor
+            cursorShape: notchWin.status === "idle" ? Qt.IBeamCursor : Qt.ArrowCursor
+            enabled: notchWin.status === "idle"
             onClicked: promptInput.forceActiveFocus()
         }
 
@@ -198,7 +200,7 @@ PanelWindow {
             }
         }
 
-        // Interactive Input Field (Center)
+        // Interactive Input Field / Live Reasoning Display (Center)
         Item {
             id: textContainer
             anchors.left: orbBox.right
@@ -222,6 +224,8 @@ PanelWindow {
                 selectByMouse: true
                 selectionColor: "#333333"
                 selectedTextColor: "#ffffff"
+                visible: notchWin.status === "idle"
+                enabled: notchWin.status === "idle"
 
                 onAccepted: notchWin.submitPrompt()
 
@@ -229,7 +233,7 @@ PanelWindow {
                     notchWin.closeNotch();
                 }
 
-                // Placeholder text when empty
+                // Placeholder text when idle and empty
                 Text {
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
@@ -238,7 +242,28 @@ PanelWindow {
                     font.family: promptInput.font.family
                     font.pixelSize: promptInput.font.pixelSize
                     font.italic: false
-                    visible: promptInput.text.length === 0
+                    visible: promptInput.text.length === 0 && notchWin.status === "idle"
+                }
+            }
+
+            // Live AI Reasoning / Tool / Speech Text (no italic, no hardcoded prefixes)
+            Item {
+                anchors.fill: parent
+                visible: notchWin.status !== "idle"
+
+                Text {
+                    id: statusLabel
+                    anchors.fill: parent
+                    verticalAlignment: Text.AlignVCenter
+                    color: notchWin.coreColor
+                    font.family: "JetBrains Mono, Inter, Cantarell, Sans"
+                    font.pixelSize: 13
+                    font.weight: Font.Normal
+                    font.italic: false
+                    elide: Text.ElideRight
+                    text: notchWin.status === "working"
+                        ? (notchWin.currentTool || notchWin.currentMessage)
+                        : notchWin.currentMessage
                 }
             }
         }
@@ -254,7 +279,7 @@ PanelWindow {
             // Clear Input Button (Lucide X)
             Rectangle {
                 id: clearBtn
-                visible: promptInput.text.length > 0
+                visible: promptInput.text.length > 0 && notchWin.status === "idle"
                 width: 28
                 height: 28
                 radius: 14
@@ -294,7 +319,7 @@ PanelWindow {
             // Submit Prompt Button (Lucide CornerDownLeft)
             Rectangle {
                 id: sendBtn
-                visible: promptInput.text.trim().length > 0
+                visible: promptInput.text.trim().length > 0 && notchWin.status === "idle"
                 width: 30
                 height: 30
                 radius: 15
