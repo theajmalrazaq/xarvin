@@ -7,7 +7,7 @@
 
 **XARVIN** is a high-performance, resident voice AI desktop companion built for Linux Wayland desktops (Hyprland, Omarchy, Sway, Niri, River) and powered by [Quickshell](https://git.outfoxxed.me/outfoxxed/quickshell).
 
-It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <kbd>X</kbd>), animated 3D halftone Thinking Orbs, lightning-fast streaming neural voice synthesis via Deepgram Aura 2 (`aura-2-draco-en`), and persistent agent reasoning powered by Antigravity (`agy`), Composio MCP, and Octopus MCP (WhatsApp).
+It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <kbd>X</kbd>), animated 3D halftone Thinking Orbs, lightning-fast streaming neural voice synthesis via Deepgram Aura 2 (`aura-2-orion-en`), and persistent agent reasoning powered by Antigravity (`agy`), Composio MCP, and Octopus MCP (WhatsApp).
 
 ---
 
@@ -68,7 +68,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
 [Speech Synthesis Worker (xarvin_tts_worker.py)]
        │
        ▼ (Streaming Audio API)
-[Deepgram Aura 2 (aura-2-draco-en)]
+[Deepgram Aura 2 (aura-2-orion-en)]
        │
        ▼ (Streaming MP3 / Pipelined)
 [mpv (PipeWire Output)]
@@ -126,7 +126,8 @@ ASSISTANT_NAME=XARVIN
 # Cloud TTS (Deepgram Aura 2)
 TTS_ENGINE=deepgram
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
-DEEPGRAM_VOICE=aura-2-draco-en
+DEEPGRAM_VOICE=aura-2-orion-en
+SPEECH_SPEED=1.15
 ```
 
 After modifying credentials, restart the services:

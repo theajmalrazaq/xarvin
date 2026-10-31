@@ -15,6 +15,7 @@ pub struct StatePayload {
     pub status: String,
     pub tool: String,
     pub message: String,
+    pub duration_ms: u64,
     pub active: bool,
     pub always_listening: bool,
     pub timestamp: f64,
@@ -93,6 +94,10 @@ impl Config {
 
 // Write status atomically to $XDG_RUNTIME_DIR/xarvin-state.json
 fn write_state(cfg: &Config, status: &str, tool: &str, message: &str) {
+    write_state_dur(cfg, status, tool, message, 0);
+}
+
+fn write_state_dur(cfg: &Config, status: &str, tool: &str, message: &str, duration_ms: u64) {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
@@ -101,6 +106,7 @@ fn write_state(cfg: &Config, status: &str, tool: &str, message: &str) {
         status: status.to_string(),
         tool: tool.to_string(),
         message: message.to_string(),
+        duration_ms,
         active: status != "idle",
         always_listening: false,
         timestamp: now,
@@ -319,6 +325,12 @@ impl DaemonState {
         write_state(&self.cfg, st, tool, msg);
     }
 
+    async fn set_status_dur(&self, st: &str, tool: &str, msg: &str, duration_ms: u64) {
+        let mut w = self.status.write().await;
+        *w = st.to_string();
+        write_state_dur(&self.cfg, st, tool, msg, duration_ms);
+    }
+
     async fn cancel_activity(&self) {
         self.cancel_flag.store(true, Ordering::Relaxed);
         self.finish_listen_notify.notify_waiters();
@@ -394,8 +406,9 @@ async fn run_text_turn(state: Arc<DaemonState>, text: String) {
                             match kind {
                                 "playing" => {
                                     let txt = e.get("text").and_then(|v| v.as_str()).unwrap_or("");
-                                    eprintln!("[VOICE:START] speaking: {}", txt);
-                                    state_tts.set_status("speaking", "", txt).await;
+                                    let dur = e.get("duration_ms").and_then(|v| v.as_u64()).unwrap_or(2000);
+                                    eprintln!("[VOICE:START] speaking ({}ms): {}", dur, txt);
+                                    state_tts.set_status_dur("speaking", "", txt, dur).await;
                                 }
                                 "done" => {
                                     finished += 1;

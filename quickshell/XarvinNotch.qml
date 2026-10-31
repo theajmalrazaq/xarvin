@@ -48,34 +48,48 @@ PanelWindow {
 
     // Flowing word highlight state during speech
     property var speechWords: []
+    property var wordDurations: []
     property int activeWordIdx: 0
     property string lastTrackedSentence: ""
 
-    function resetWordFlow(sentence) {
+    function resetWordFlow(sentence, durationMs) {
         var trimmed = (sentence || "").trim();
         if (trimmed.length === 0) {
             notchWin.speechWords = [];
+            notchWin.wordDurations = [];
             notchWin.activeWordIdx = 0;
             return;
         }
-        notchWin.speechWords = trimmed.split(/\s+/);
+        var words = trimmed.split(/\s+/);
+        var weights = [];
+        var totalWeight = 0;
+        for (var i = 0; i < words.length; i++) {
+            var w = words[i];
+            var wt = Math.max(2, w.length) + ((w.endsWith(",") || w.endsWith(";") || w.endsWith(":")) ? 3.0 : 0);
+            weights.push(wt);
+            totalWeight += wt;
+        }
+        var activeDur = Math.max(250, (durationMs > 0 ? durationMs : words.length * 260) - 180);
+        var durs = [];
+        for (var j = 0; j < words.length; j++) {
+            durs.push(Math.max(80, Math.round(activeDur * (weights[j] / Math.max(1, totalWeight)))));
+        }
+        notchWin.wordDurations = durs;
+        notchWin.speechWords = words;
         notchWin.activeWordIdx = 0;
         wordFlowAnim.enabled = false;
-        wordRow.x = 18;
+        wordRow.x = 12;
         wordFlowAnim.enabled = true;
-        scheduleNextWord(true);
+        scheduleNextWord();
     }
 
-    function scheduleNextWord(isFirst) {
+    function scheduleNextWord() {
         if (notchWin.status !== "speaking" || notchWin.speechWords.length === 0) {
             wordTimer.stop();
             return;
         }
-        var w = notchWin.speechWords[notchWin.activeWordIdx] || "";
-        var dur = 95 + w.length * 46;
-        if (w.endsWith(",") || w.endsWith(";") || w.endsWith(":")) dur += 110;
-        if (isFirst) dur += 160;
-        wordTimer.interval = Math.max(140, Math.min(580, dur));
+        var dur = notchWin.wordDurations[notchWin.activeWordIdx] || 220;
+        wordTimer.interval = dur;
         wordTimer.restart();
     }
 
@@ -83,9 +97,9 @@ PanelWindow {
         if (!wordRepeater || notchWin.activeWordIdx < 0 || notchWin.activeWordIdx >= wordRepeater.count) return;
         var item = wordRepeater.itemAt(notchWin.activeWordIdx);
         if (!item) return;
-        var focusX = 46;
+        var focusX = 36;
         var targetX = focusX - item.x;
-        wordRow.x = Math.min(18, targetX);
+        wordRow.x = Math.min(12, targetX);
     }
 
     Timer {
@@ -96,7 +110,7 @@ PanelWindow {
             if (notchWin.status === "speaking" && notchWin.activeWordIdx + 1 < notchWin.speechWords.length) {
                 notchWin.activeWordIdx += 1;
                 notchWin.updateWordRowPosition();
-                notchWin.scheduleNextWord(false);
+                notchWin.scheduleNextWord();
             }
         }
     }
@@ -154,7 +168,7 @@ PanelWindow {
                     if (notchWin.status === "speaking") {
                         if (notchWin.currentMessage !== notchWin.lastTrackedSentence) {
                             notchWin.lastTrackedSentence = notchWin.currentMessage;
-                            notchWin.resetWordFlow(notchWin.currentMessage);
+                            notchWin.resetWordFlow(notchWin.currentMessage, s.duration_ms || 0);
                         }
                     } else {
                         notchWin.lastTrackedSentence = "";
@@ -341,14 +355,14 @@ PanelWindow {
 
                 Row {
                     id: wordRow
-                    x: 18
+                    x: 12
                     anchors.verticalCenter: parent.verticalCenter
-                    spacing: 8
+                    spacing: 5
 
                     Behavior on x {
                         id: wordFlowAnim
                         enabled: true
-                        NumberAnimation { duration: 230; easing.type: Easing.OutCubic }
+                        NumberAnimation { duration: 200; easing.type: Easing.OutCubic }
                     }
 
                     Repeater {
@@ -361,21 +375,11 @@ PanelWindow {
                             readonly property bool isPast: index < notchWin.activeWordIdx
                             readonly property int dist: Math.abs(index - notchWin.activeWordIdx)
 
-                            width: wordText.implicitWidth + 10
+                            width: wordText.implicitWidth
                             height: 28
 
                             onXChanged: {
                                 if (isCurrent) notchWin.updateWordRowPosition();
-                            }
-
-                            Rectangle {
-                                anchors.fill: parent
-                                radius: 8
-                                color: "#226ab0f3"
-                                border.color: "#556ab0f3"
-                                border.width: 1
-                                opacity: wordDelegate.isCurrent ? 1.0 : 0.0
-                                Behavior on opacity { NumberAnimation { duration: 180 } }
                             }
 
                             Text {
@@ -384,7 +388,7 @@ PanelWindow {
                                 text: modelData
                                 font.family: "JetBrains Mono, Inter, Cantarell, Sans"
                                 font.pixelSize: 13
-                                font.weight: wordDelegate.isCurrent ? Font.DemiBold : Font.Normal
+                                font.weight: wordDelegate.isCurrent ? Font.Medium : Font.Normal
                                 font.italic: false
                                 color: wordDelegate.isCurrent ? "#ffffff" : notchWin.coreColor
                                 visible: false
@@ -401,11 +405,9 @@ PanelWindow {
                                     : (wordDelegate.isPast
                                         ? Math.max(0.18, 0.45 - wordDelegate.dist * 0.12)
                                         : Math.max(0.28, 0.62 - wordDelegate.dist * 0.09))
-                                scale: wordDelegate.isCurrent ? 1.05 : 0.96
 
-                                Behavior on blur { NumberAnimation { duration: 190; easing.type: Easing.OutQuad } }
-                                Behavior on opacity { NumberAnimation { duration: 190; easing.type: Easing.OutQuad } }
-                                Behavior on scale { NumberAnimation { duration: 190; easing.type: Easing.OutQuad } }
+                                Behavior on blur { NumberAnimation { duration: 170; easing.type: Easing.OutQuad } }
+                                Behavior on opacity { NumberAnimation { duration: 170; easing.type: Easing.OutQuad } }
                             }
                         }
                     }
