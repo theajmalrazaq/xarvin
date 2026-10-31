@@ -45,19 +45,33 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
 
 ## 🏗 Architecture
 
-```mermaid
-flowchart TD
-    User["User (<kbd>Super + X</kbd>)"] -->|Types Command| Notch["XARVIN Quickshell Overlay (WlrLayershell)"]
-    Notch -->|Unix Socket /run/user/1000/xarvin.sock| Daemon["Native Rust Brain Daemon (xarvin-daemon)"]
-    Daemon -->|JSON Stream (Warm Cache)| Agy["Antigravity CLI (gemini-3.8-flash-low)"]
-    Agy -->|Tool Calls| MCP["Composio MCP / Octopus MCP (WhatsApp)"]
-    Agy -->|Streaming Response Sentences| Daemon
-    Daemon -->|JSON IPC| TTS["Speech Synthesis Worker (xarvin_tts_worker.py)"]
-    TTS -->|Streaming Audio API| Deepgram["Deepgram Aura 2 / ElevenLabs"]
-    Deepgram -->|Streaming MP3 (Pipelined)| Audio["mpv (PipeWire Output)"]
-    Daemon -->|Atomic State Broadcast| State["xarvin-state.json"]
-    State -->|FileView Inotify| Notch
-    State -->|FileView Inotify| Bar["Omarchy Status Bar Widget (XarvinBar.qml)"]
+```text
+[User (Super + X)]
+       │
+       ▼ (Types Command)
+[XARVIN Quickshell Overlay (WlrLayershell)]
+       │
+       ▼ (Unix Socket: /run/user/1000/xarvin.sock)
+[Native Rust Brain Daemon (xarvin-daemon)]
+       │
+       ├──► [Atomic State Broadcast] ──► xarvin-state.json ──► UI & Status Bar
+       │
+       ▼ (JSON Stream / Warm Cache)
+[Antigravity CLI (gemini-3.8-flash-low)]
+       │
+       ├──► [Tool Calls] ──► Composio MCP / Octopus MCP (WhatsApp)
+       │
+       ▼ (Streaming Response Sentences)
+[Native Rust Brain Daemon]
+       │
+       ▼ (JSON IPC)
+[Speech Synthesis Worker (xarvin_tts_worker.py)]
+       │
+       ▼ (Streaming Audio API)
+[Deepgram Aura 2 / ElevenLabs]
+       │
+       ▼ (Streaming MP3 / Pipelined)
+[mpv (PipeWire Output)]
 ```
 
 ---
