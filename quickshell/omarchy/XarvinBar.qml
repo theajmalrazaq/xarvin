@@ -10,7 +10,6 @@ BarWidget {
   moduleName: "io.github.xarvin"
 
   readonly property string statePath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/xarvin-state.json"
-  readonly property string legacyStatePath: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/jarvis-state.json"
 
   property string status: "idle"
   property real tSec: 0.6
@@ -19,49 +18,71 @@ BarWidget {
   implicitWidth: root.vertical ? root.barSize : Style.bar.iconSlot
   implicitHeight: root.vertical ? Style.bar.iconSlot : root.barSize
 
-  readonly property real audioLevel: (root.status === "speaking" || root.status === "listening") ? 0.6 : 0
+  property real speechPulsation: 0.3
+  SequentialAnimation on speechPulsation {
+    running: root.status === "speaking"
+    loops: Animation.Infinite
+    NumberAnimation { to: 0.95; duration: 420; easing.type: Easing.InOutQuad }
+    NumberAnimation { to: 0.35; duration: 380; easing.type: Easing.InOutQuad }
+  }
 
+  readonly property real audioLevel: (root.status === "speaking") ? speechPulsation : ((root.status === "listening") ? 0.6 : 0)
+
+  // Original XARVIN orb geometry per state
   readonly property string activeOrbState: {
     if (root.status === "listening") return "listening"
     if (root.status === "working")   return "solving"
     if (root.status === "thinking")  return "searching"
     if (root.status === "speaking")  return "composing"
-    return "searching" // Globe Halftone
+    return "searching"
   }
 
+  // Original XARVIN palette
   property color coreColor: {
-    if (root.status === "working")   return "#a855f7" // Purple
-    if (root.status === "listening") return "#60a5fa" // Blue
-    if (root.status === "thinking")  return "#f59e0b" // Amber
-    if (root.status === "speaking")  return "#10b981" // Green
-    return "#ffffff" // White
+    if (root.status === "working")   return "#e0a458"
+    if (root.status === "listening") return "#5cc8b4"
+    if (root.status === "thinking")  return "#c39bd3"
+    if (root.status === "speaking")  return "#6ab0f3"
+    return "#eeeae2"
   }
 
   Behavior on coreColor { ColorAnimation { duration: 180 } }
 
   // Animate 3D orb smoothly
   Timer {
-    interval: 16
+    interval: 45
     running: root.visible
     repeat: true
     onTriggered: {
-      root.tSec += 0.016
+      root.tSec += 0.045 * (1 + root.audioLevel * 0.8)
       orbCanvas.requestPaint()
     }
   }
 
-  // Watch state file
+  // Exact Quickshell FileView file watcher pattern
   FileView {
     id: stateWatcher
     path: root.statePath
     watchChanges: true
-    onTextChanged: {
-      if (!text || text.length === 0) return;
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
       try {
-        var s = JSON.parse(text);
-        root.status = s.status || "idle";
+        var str = text();
+        if (str && str.length > 0) {
+          var s = JSON.parse(str);
+          root.status = s.status || "idle";
+        }
       } catch (e) {}
     }
+  }
+
+  // Periodic safety reload timer (150ms)
+  Timer {
+    interval: 150
+    running: true
+    repeat: true
+    onTriggered: stateWatcher.reload()
   }
 
   Canvas {
@@ -103,7 +124,7 @@ BarWidget {
         Quickshell.execDetached(["xarvin", "toggle"])
       }
     }
-    onEntered: if (root.bar) root.bar.showTooltip(root, "XARVIN (" + root.status.toUpperCase() + ") — Click to open command bar")
+    onEntered: if (root.bar) root.bar.showTooltip(root, "XARVIN")
     onExited: if (root.bar) root.bar.hideTooltip(root)
   }
 }

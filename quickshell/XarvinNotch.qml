@@ -108,19 +108,18 @@ PanelWindow {
         onTriggered: stateWatcher.reload()
     }
 
-    // 60 FPS animation ticker for 3D Thinking Orb
+    // 45ms animation ticker for 3D Thinking Orb (matches bar orb speed)
     Timer {
-        interval: 16
+        interval: 45
         running: notchWin.visible
         repeat: true
         onTriggered: {
-            notchWin.tSec += 0.016;
+            notchWin.tSec += 0.045 * (1 + notchWin.audioLevel * 0.8);
             notchOrbCanvas.requestPaint();
         }
     }
 
     function submitPrompt() {
-        if (notchWin.status !== "idle") return;
         var query = promptInput.text.trim();
         if (query.length > 0) {
             promptInput.focus = false;
@@ -146,11 +145,10 @@ PanelWindow {
         border.color: "#121212"
         border.width: 1.5
 
-        // Click anywhere on bar to focus text input (when idle)
+        // Click anywhere on bar to focus text input
         MouseArea {
             anchors.fill: parent
-            cursorShape: notchWin.status === "idle" ? Qt.IBeamCursor : Qt.ArrowCursor
-            enabled: notchWin.status === "idle"
+            cursorShape: Qt.IBeamCursor
             onClicked: promptInput.forceActiveFocus()
         }
 
@@ -189,7 +187,7 @@ PanelWindow {
             }
         }
 
-        // Interactive Input Field / Dynamic Status Display (Center)
+        // Interactive Input Field (Center)
         Item {
             id: textContainer
             anchors.left: orbBox.right
@@ -207,13 +205,12 @@ PanelWindow {
                 font.family: "JetBrains Mono, Inter, Cantarell, Sans"
                 font.pixelSize: 13
                 font.weight: Font.Normal
+                font.italic: false
                 clip: true
                 focus: true
                 selectByMouse: true
                 selectionColor: "#333333"
                 selectedTextColor: "#ffffff"
-                visible: notchWin.status === "idle"
-                enabled: notchWin.status === "idle"
 
                 onAccepted: notchWin.submitPrompt()
 
@@ -221,7 +218,7 @@ PanelWindow {
                     notchWin.closeNotch();
                 }
 
-                // Placeholder text when idle and empty
+                // Placeholder text when empty
                 Text {
                     anchors.fill: parent
                     verticalAlignment: Text.AlignVCenter
@@ -229,39 +226,8 @@ PanelWindow {
                     color: "#555555"
                     font.family: promptInput.font.family
                     font.pixelSize: promptInput.font.pixelSize
-                    visible: promptInput.text.length === 0 && notchWin.status === "idle"
-                }
-            }
-
-            // Live Activity Status Indicator (when AI is thinking, working, or speaking)
-            Item {
-                anchors.fill: parent
-                visible: notchWin.status !== "idle"
-
-                Text {
-                    id: statusLabel
-                    anchors.fill: parent
-                    verticalAlignment: Text.AlignVCenter
-                    color: notchWin.coreColor
-                    font.family: "JetBrains Mono, Inter, Cantarell, Sans"
-                    font.pixelSize: 13
-                    font.italic: true
-                    elide: Text.ElideRight
-
-                    text: {
-                        switch (notchWin.status) {
-                            case "thinking":
-                                return "Thinking: " + (notchWin.currentMessage || "Processing...");
-                            case "working":
-                                return "Running: " + (notchWin.currentTool || "Executing action") + "...";
-                            case "speaking":
-                                return "Speaking: " + (notchWin.currentMessage || "Answering...");
-                            case "listening":
-                                return "Listening...";
-                            default:
-                                return "Active";
-                        }
-                    }
+                    font.italic: false
+                    visible: promptInput.text.length === 0
                 }
             }
         }
@@ -277,7 +243,7 @@ PanelWindow {
             // Clear Input Button (Lucide X)
             Rectangle {
                 id: clearBtn
-                visible: promptInput.text.length > 0 && notchWin.status === "idle"
+                visible: promptInput.text.length > 0
                 width: 28
                 height: 28
                 radius: 14

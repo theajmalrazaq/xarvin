@@ -124,7 +124,7 @@ BarWidget {
         Quickshell.execDetached(["xarvin", "toggle"])
       }
     }
-    onEntered: if (root.bar) root.bar.showTooltip(root, "XARVIN (" + root.status.toUpperCase() + ") — Click to open command bar")
+    onEntered: if (root.bar) root.bar.showTooltip(root, "XARVIN")
     onExited: if (root.bar) root.bar.hideTooltip(root)
   }
 }
