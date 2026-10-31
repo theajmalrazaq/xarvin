@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.xarvin",
+  "name": "XARVIN",
+  "version": "1.0.0",
+  "author": "XARVIN Team",
+  "license": "MIT",
+  "description": "3D Voice Assistant status bar orb for XARVIN",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "XarvinBar.qml"
+  },
+  "barWidget": {
+    "displayName": "XARVIN Voice Orb",
+    "description": "Shows the 3D Thinking Orb in the bar",
+    "category": "System",
+    "defaultSection": "center",
+    "allowMultiple": false
+  }
+}

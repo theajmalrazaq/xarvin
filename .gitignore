@@ -1,0 +1,46 @@
+# Environment & Secret Credentials
+config/xarvin.env
+.env
+*.env
+*.env.*
+!config/xarvin.env.example
+
+# Rust Build Artifacts
+daemon/target/
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Compiled Binaries
+bin/xarvin-daemon
+
+# Python & Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Neural Voice Models & Audio Cache
+tts/voices/*.onnx
+tts/voices/*.onnx.json
+*.wav
+*.mp3
+!tts/silence_preroll.mp3
+
+# Runtime Sockets & States
+*.sock
+*.pid
+*-state.json
+*.tmp
+
+# Editor & OS Artifacts
+.idea/
+.vscode/
+*.swp
+*~
+.DS_Store
+Thumbs.db

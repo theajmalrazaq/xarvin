@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# XARVIN — Unified AI Desktop Companion CLI
+set -e
+
+PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+DAEMON_BIN="${PROJECT_DIR}/bin/xarvin-daemon"
+SOCKET_PATH="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/xarvin.sock"
+QS_ENTRY="${PROJECT_DIR}/quickshell/shell.qml"
+
+case "$1" in
+    toggle)
+        if ! qs -c xarvin ipc call xarvin toggle 2>/dev/null; then
+            systemctl --user restart xarvin-ui.service 2>/dev/null || true
+            sleep 0.3
+            qs -c xarvin ipc call xarvin toggle 2>/dev/null || true
+        fi
+        ;;
+    open)
+        qs -c xarvin ipc call xarvin open 2>/dev/null || systemctl --user start xarvin-ui.service 2>/dev/null || true
+        ;;
+    close)
+        qs -c xarvin ipc call xarvin close 2>/dev/null || true
+        ;;
+    ask)
+        shift
+        PROMPT="$*"
+        if [ -z "$PROMPT" ]; then
+            echo "Usage: xarvin ask <prompt>"
+            exit 1
+        fi
+        if [ -x "$DAEMON_BIN" ]; then
+            "$DAEMON_BIN" ask "$PROMPT"
+        elif [ -x "$HOME/.local/bin/xarvin-daemon" ]; then
+            "$HOME/.local/bin/xarvin-daemon" ask "$PROMPT"
+        else
+            echo "Error: xarvin-daemon binary not found."
+            exit 1
+        fi
+        ;;
+    stop)
+        if [ -x "$DAEMON_BIN" ]; then
+            "$DAEMON_BIN" stop
+        elif [ -x "$HOME/.local/bin/xarvin-daemon" ]; then
+            "$HOME/.local/bin/xarvin-daemon" stop
+        fi
+        ;;
+    status)
+        echo "=== XARVIN System Status ==="
+        if [ -S "$SOCKET_PATH" ]; then
+            echo "● Daemon Socket: Active ($SOCKET_PATH)"
+        else
+            echo "○ Daemon Socket: Inactive"
+        fi
+        systemctl --user status xarvin.service --no-pager 2>/dev/null || echo "○ systemd unit: not running"
+        ;;
+    start)
+        systemctl --user start xarvin.service xarvin-ui.service 2>/dev/null || true
+        echo "XARVIN services started."
+        ;;
+    restart)
+        systemctl --user restart xarvin.service xarvin-ui.service 2>/dev/null || true
+        echo "XARVIN services restarted."
+        ;;
+    daemon)
+        shift
+        exec "$DAEMON_BIN" "$@"
+        ;;
+    *)
+        echo "XARVIN — AI Desktop Companion"
+        echo "Usage: xarvin [command]"
+        echo ""
+        echo "Commands:"
+        echo "  toggle       Toggle the floating overlay command bar"
+        echo "  open         Open the overlay command bar"
+        echo "  close        Close the overlay command bar"
+        echo "  ask <text>   Directly send a prompt to XARVIN"
+        echo "  stop         Interrupt current speech or working task"
+        echo "  status       Check XARVIN daemon and service status"
+        echo "  start        Start background daemon & UI services"
+        echo "  restart      Restart XARVIN services"
+        echo "  daemon       Run the native daemon in the foreground"
+        ;;
+esac

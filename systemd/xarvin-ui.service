@@ -1,0 +1,16 @@
+[Unit]
+Description=XARVIN AI Desktop Companion Quickshell UI Overlay
+After=graphical-session.target xarvin.service
+Wants=xarvin.service
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/quickshell -c xarvin
+WorkingDirectory=/home/theajmalrazaq/Projects/xarvin
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

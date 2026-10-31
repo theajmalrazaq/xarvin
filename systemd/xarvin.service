@@ -1,0 +1,20 @@
+[Unit]
+Description=XARVIN AI Desktop Companion Background Daemon (Native Rust Brain)
+After=graphical-session.target pipewire.service wireplumber.service
+Wants=pipewire.service wireplumber.service
+
+[Service]
+Type=simple
+ExecStart=/home/theajmalrazaq/Projects/xarvin/bin/xarvin-daemon daemon
+WorkingDirectory=/home/theajmalrazaq/Projects/xarvin
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+Environment=XARVIN_ENV=/home/theajmalrazaq/Projects/xarvin/config/xarvin.env
+Environment=XARVIN_PYTHON=/home/theajmalrazaq/Projects/xarvin/.venv/bin/python3
+Environment=XARVIN_TTS_SCRIPT=/home/theajmalrazaq/Projects/xarvin/tts/xarvin_tts_worker.py
+
+[Install]
+WantedBy=default.target
