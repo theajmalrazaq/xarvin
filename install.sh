@@ -93,7 +93,7 @@ echo "⚙️  [5/6] Verifying configuration file..."
 if [ ! -f "${DIR}/config/xarvin.env" ]; then
     cp "${DIR}/config/xarvin.env.example" "${DIR}/config/xarvin.env"
     echo "✓ Created new config file at ${DIR}/config/xarvin.env"
-    echo "  👉 Edit this file to add your DEEPGRAM_API_KEY or ELEVENLABS_API_KEY."
+    echo "  👉 Edit this file to add your DEEPGRAM_API_KEY."
 else
     echo "✓ Configuration file already exists at ${DIR}/config/xarvin.env"
 fi
