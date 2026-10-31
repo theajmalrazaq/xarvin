@@ -33,7 +33,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
   - `working`: Dynamic orbital particle spinning
   - `speaking`: Organic waveform and audio ripple pulsations
   - `listening`: Responsive audio waves
-- **Streaming Neural Voice AI (Deepgram Aura 2)**: Real-time MP3 chunk streaming through PipeWire via `mpv` with sub-200ms latency, zero local CPU load, and hardware DAC silence preroll. Also supports ElevenLabs as an alternative engine.
+- **Streaming Neural Voice AI (Deepgram Aura 2)**: Real-time linear16 WAV audio streaming directly through native PipeWire (`pw-play`) with sub-200ms latency, zero local CPU load. Automatically falls back to `mpv`, PulseAudio (`paplay`), or ALSA (`aplay`). Also supports ElevenLabs as an alternative engine.
 - **Zero-Latency Rust Daemon**: Native async Rust daemon (`xarvin-daemon`) keeping an active warm Antigravity CLI brain session in memory with zero cold-start delay.
 - **Tool & Agent Integrations**:
   - **Composio MCP**: System management, calendar, browser, and developer integrations.
@@ -54,7 +54,7 @@ flowchart TD
     Agy -->|Streaming Response Sentences| Daemon
     Daemon -->|JSON IPC| TTS["Speech Synthesis Worker (xarvin_tts_worker.py)"]
     TTS -->|Streaming Audio API| Deepgram["Deepgram Aura 2 / ElevenLabs"]
-    Deepgram -->|MP3 Audio Stream| Mpv["mpv (PipeWire Output)"]
+    Deepgram -->|Streaming Audio| Audio["PipeWire (pw-play) / mpv"]
     Daemon -->|Atomic State Broadcast| State["xarvin-state.json"]
     State -->|FileView Inotify| Notch
     State -->|FileView Inotify| Bar["Omarchy Status Bar Widget (XarvinBar.qml)"]
@@ -71,8 +71,8 @@ Ensure you have the following installed on your system:
 | **Rust & Cargo** | `sudo pacman -S rust` | `sudo dnf install cargo` | `sudo apt install cargo` |
 | **Python 3** | `sudo pacman -S python` | `sudo dnf install python3` | `sudo apt install python3 python3-venv` |
 | **Quickshell** | `sudo pacman -S quickshell` | [Build from source](https://git.outfoxxed.me/outfoxxed/quickshell) | [Build from source](https://git.outfoxxed.me/outfoxxed/quickshell) |
-| **Audio Player** | `sudo pacman -S mpv pipewire` | `sudo dnf install mpv pipewire` | `sudo apt install mpv pipewire` |
-| **Antigravity CLI** | `agy` (Installed in `~/.local/bin/agy`) |
+| **Audio Backend** | Built-in (`pw-play` / PipeWire) | Built-in (`pipewire-utils`) | Built-in (`pipewire-bin` or `mpv`) |
+| **Antigravity CLI** | `agy` (Installed in `~/.local/bin/agy`) | `agy` (Installed in `~/.local/bin/agy`) | `agy` (Installed in `~/.local/bin/agy`) |
 
 ---
 
@@ -223,6 +223,11 @@ journalctl --user -u xarvin.service -f
 # Check Quickshell overlay logs
 journalctl --user -u xarvin-ui.service -f
 ```
+
+### Why was `mpv` originally used, and is it required?
+Originally, `mpv` was used because it handles raw stdin streaming of compressed MP3 chunks (`mpv -`) out-of-the-box without needing prior knowledge of file length or container headers. 
+
+However, `mpv` is **not strictly required**. On modern Linux systems running PipeWire, XARVIN automatically routes uncompressed linear16 WAV audio directly into the native **`pw-play`** CLI player. This eliminates external media player dependencies, reduces CPU/RAM overhead, and enables seamless sub-200ms audio output directly through the PipeWire audio graph. If `pw-play` is absent, XARVIN gracefully falls back to `mpv`, `paplay` (PulseAudio), `aplay` (ALSA), or `ffplay`.
 
 ---
 

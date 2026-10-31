@@ -3,6 +3,7 @@ import os
 import sys
 import re
 import json
+import shutil
 import subprocess
 import urllib.request
 from pathlib import Path
@@ -47,6 +48,32 @@ def clean_for_speech(text: str) -> str:
     # Normalize whitespace
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+def get_audio_player_cmd(format_hint="wav"):
+    """
+    Returns an audio playback command that reads audio chunks from stdin.
+    Prefers native PipeWire (pw-play) for raw/WAV streams without external video player dependencies.
+    Falls back to mpv, paplay, aplay, or ffplay.
+    """
+    if format_hint == "wav":
+        if shutil.which("pw-play"):
+            return ["pw-play", "--latency=50ms", "-"]
+        elif shutil.which("paplay"):
+            return ["paplay"]
+        elif shutil.which("aplay"):
+            return ["aplay", "-q", "-"]
+        elif shutil.which("mpv"):
+            return ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.1", "-"]
+        elif shutil.which("ffplay"):
+            return ["ffplay", "-nodisp", "-autoexit", "-"]
+    else: # mp3 or generic stream
+        if shutil.which("mpv"):
+            return ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.1", "-"]
+        elif shutil.which("pw-play"):
+            return ["pw-play", "--latency=50ms", "-"]
+        elif shutil.which("ffplay"):
+            return ["ffplay", "-nodisp", "-autoexit", "-"]
+    return ["pw-play", "-"]
 
 def main():
     active_engine = TTS_ENGINE
@@ -105,7 +132,9 @@ def main():
             # 1. Primary: Deepgram Aura Streaming TTS
             if active_engine == "deepgram" and DEEPGRAM_API_KEY and not interrupted:
                 try:
-                    url = f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}"
+                    player_cmd = get_audio_player_cmd(format_hint="wav")
+                    # Request linear16 WAV format for direct PipeWire (pw-play) or ALSA/Pulse compatibility
+                    url = f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}&encoding=linear16&container=wav"
                     headers = {
                         "Authorization": f"Token {DEEPGRAM_API_KEY}",
                         "Content-Type": "application/json"
@@ -116,23 +145,16 @@ def main():
                     with urllib.request.urlopen(http_req, timeout=10) as resp:
                         if resp.status == 200:
                             current_player = subprocess.Popen(
-                                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.1", "-"],
+                                player_cmd,
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL
                             )
 
-                            if SILENCE_PREROLL and current_player.stdin:
-                                try:
-                                    current_player.stdin.write(SILENCE_PREROLL)
-                                    current_player.stdin.flush()
-                                except (BrokenPipeError, OSError):
-                                    pass
-
                             while True:
                                 if interrupted:
                                     break
-                                chunk = resp.read(2048)
+                                chunk = resp.read(4096)
                                 if not chunk:
                                     break
                                 if current_player and current_player.stdin:
@@ -157,6 +179,7 @@ def main():
             # 2. Secondary: ElevenLabs Streaming TTS (if active)
             if not success and ELEVENLABS_API_KEY and not interrupted:
                 try:
+                    player_cmd = get_audio_player_cmd(format_hint="mp3")
                     url = f"https://api.elevenlabs.io/v1/text-to-speech/{ELEVENLABS_VOICE_ID}/stream?optimize_streaming_latency=3"
                     headers = {
                         "xi-api-key": ELEVENLABS_API_KEY,
@@ -177,7 +200,7 @@ def main():
                     with urllib.request.urlopen(http_req, timeout=12) as resp:
                         if resp.status == 200:
                             current_player = subprocess.Popen(
-                                ["mpv", "--no-video", "--no-terminal", "--really-quiet", "--audio-stream-silence=yes", "--audio-buffer=0.1", "-"],
+                                player_cmd,
                                 stdin=subprocess.PIPE,
                                 stdout=subprocess.DEVNULL,
                                 stderr=subprocess.DEVNULL

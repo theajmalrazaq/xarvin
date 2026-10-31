@@ -22,18 +22,31 @@ echo ""
 echo "🔍 [1/6] Checking required system dependencies..."
 
 MISSING_DEPS=()
-for cmd in cargo rustc python3 mpv quickshell; do
+for cmd in cargo rustc python3 quickshell; do
     if ! command -v "$cmd" >/dev/null 2>&1; then
         MISSING_DEPS+=("$cmd")
     fi
 done
 
+# Audio backend check (native PipeWire pw-play preferred, mpv/paplay/aplay fallback)
+AUDIO_BACKEND=""
+for p in pw-play mpv paplay aplay; do
+    if command -v "$p" >/dev/null 2>&1; then
+        AUDIO_BACKEND="$p"
+        break
+    fi
+done
+
+if [ -z "$AUDIO_BACKEND" ]; then
+    MISSING_DEPS+=("pw-play (or mpv)")
+fi
+
 if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
     echo "⚠️  Missing dependencies: ${MISSING_DEPS[*]}"
     echo "Please install them via your package manager:"
-    echo "  - Arch/Omarchy: sudo pacman -S rust python mpv quickshell"
-    echo "  - Fedora:       sudo dnf install cargo python3 mpv"
-    echo "  - Ubuntu/Debian: sudo apt install cargo python3 python3-venv mpv"
+    echo "  - Arch/Omarchy: sudo pacman -S rust python quickshell pipewire"
+    echo "  - Fedora:       sudo dnf install cargo python3 pipewire-utils"
+    echo "  - Ubuntu/Debian: sudo apt install cargo python3 python3-venv pipewire-bin"
     echo ""
     read -rp "Do you want to continue anyway? [y/N]: " proceed
     if [[ ! "$proceed" =~ ^[Yy]$ ]]; then
@@ -41,7 +54,7 @@ if [ ${#MISSING_DEPS[@]} -gt 0 ]; then
         exit 1
     fi
 else
-    echo "✓ All core dependencies found."
+    echo "✓ All core dependencies found (Audio engine: ${AUDIO_BACKEND})."
 fi
 
 # ------------------------------------------------------------------------------
