@@ -3,11 +3,11 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Quickshell](https://img.shields.io/badge/UI-Quickshell-ff79c6.svg)](https://git.outfoxxed.me/outfoxxed/quickshell)
 [![Rust](https://img.shields.io/badge/Daemon-Rust-orange.svg)](https://www.rust-lang.org/)
-[![Voice](https://img.shields.io/badge/TTS-Deepgram%20Aura%202-purple.svg)](https://deepgram.com)
+[![Voice](https://img.shields.io/badge/TTS-Deepgram%20Flux-purple.svg)](https://deepgram.com)
 
 **XARVIN** is a high-performance, resident voice AI desktop companion built for Linux Wayland desktops (Hyprland, Omarchy, Sway, Niri, River) and powered by [Quickshell](https://git.outfoxxed.me/outfoxxed/quickshell).
 
-It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <kbd>X</kbd>), animated 3D halftone Thinking Orbs, lightning-fast streaming neural voice synthesis via Deepgram Aura 2, and persistent agent reasoning powered by Antigravity (`agy`), Composio MCP, and Octopus MCP (WhatsApp).
+It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <kbd>X</kbd>), animated 3D halftone Thinking Orbs, lightning-fast streaming neural voice synthesis via Deepgram Flux (`flux-naveen-en`), and persistent agent reasoning powered by Antigravity (`agy`), Composio MCP, and Octopus MCP (WhatsApp).
 
 ---
 
@@ -33,7 +33,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
   - `working`: Dynamic orbital particle spinning
   - `speaking`: Organic waveform and audio ripple pulsations
   - `listening`: Responsive audio waves
-- **Streaming Neural Voice AI (Deepgram Aura 2)**: Continuous, jitter-buffered real-time MP3 streaming via `mpv` with sub-200ms latency, zero gap between sentences, and zero local CPU load.
+- **Streaming Neural Voice AI (Deepgram Flux)**: Continuous, jitter-buffered real-time MP3 streaming via `mpv` with sub-200ms latency, zero gap between sentences, and zero local CPU load.
 - **Zero-Latency Rust Daemon**: Native async Rust daemon (`xarvin-daemon`) keeping an active warm Antigravity CLI brain session in memory with zero cold-start delay.
 - **Tool & Agent Integrations**:
   - **Composio MCP**: System management, calendar, browser, and developer integrations.
@@ -68,7 +68,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
 [Speech Synthesis Worker (xarvin_tts_worker.py)]
        │
        ▼ (Streaming Audio API)
-[Deepgram Aura 2]
+[Deepgram Flux (flux-naveen-en)]
        │
        ▼ (Streaming MP3 / Pipelined)
 [mpv (PipeWire Output)]
@@ -123,10 +123,10 @@ nano ~/Projects/xarvin/config/xarvin.env
 # XARVIN Configuration
 ASSISTANT_NAME=XARVIN
 
-# Cloud TTS (Deepgram Aura 2)
+# Cloud TTS (Deepgram Flux)
 TTS_ENGINE=deepgram
 DEEPGRAM_API_KEY=your_deepgram_api_key_here
-DEEPGRAM_VOICE=aura-2-orion-en
+DEEPGRAM_VOICE=flux-naveen-en
 ```
 
 After modifying credentials, restart the services:
@@ -202,7 +202,7 @@ xarvin/
 │   ├── xarvin.service              # Systemd user service for Rust background brain
 │   └── xarvin-ui.service           # Systemd user service for Quickshell UI overlay
 ├── tts/
-│   ├── xarvin_tts_worker.py        # Streaming TTS worker (Deepgram Aura 2)
+│   ├── xarvin_tts_worker.py        # Streaming TTS worker (Deepgram Flux)
 │   ├── silence_preroll.mp3         # Hardware DAC sleep-prevention preroll
 │   └── requirements.txt            # Python dependencies
 ├── install.sh                      # Fully automated one-click setup script

@@ -37,7 +37,7 @@ if ENV_FILE.exists():
                 CONFIG[k.strip()] = v.strip().strip("'\"")
 
 DEEPGRAM_API_KEY = CONFIG.get("DEEPGRAM_API_KEY", "")
-DEEPGRAM_VOICE = CONFIG.get("DEEPGRAM_VOICE", "aura-2-orion-en")
+DEEPGRAM_VOICE = CONFIG.get("DEEPGRAM_VOICE", "flux-naveen-en")
 
 SILENCE_MP3_PATH = SCRIPT_DIR / "silence_preroll.mp3"
 SILENCE_PREROLL = SILENCE_MP3_PATH.read_bytes() if SILENCE_MP3_PATH.exists() else b""
@@ -67,11 +67,12 @@ def clean_for_speech(text: str) -> str:
 
 
 def open_tts_stream(text):
-    """Return an open HTTP response streaming MP3 audio from Deepgram Aura 2, or None."""
+    """Return an open HTTP response streaming MP3 audio from Deepgram Flux/Aura, or None."""
     if DEEPGRAM_API_KEY:
         try:
+            api_ver = "v2" if DEEPGRAM_VOICE.startswith("flux") else "v1"
             req = urllib.request.Request(
-                f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}",
+                f"https://api.deepgram.com/{api_ver}/speak?model={DEEPGRAM_VOICE}",
                 data=json.dumps({"text": text[:800]}).encode("utf-8"),
                 headers={"Authorization": f"Token {DEEPGRAM_API_KEY}",
                          "Content-Type": "application/json"},
