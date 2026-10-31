@@ -33,7 +33,7 @@ It provides an elegant, keyboard-driven bottom command bar (<kbd>Super</kbd> + <
   - `working`: Dynamic orbital particle spinning
   - `speaking`: Organic waveform and audio ripple pulsations
   - `listening`: Responsive audio waves
-- **Streaming Neural Voice AI (Deepgram Aura 2)**: Real-time linear16 WAV audio streaming directly through native PipeWire (`pw-play`) with sub-200ms latency and zero local CPU load. Automatically falls back to PulseAudio (`paplay`) or ALSA (`aplay`). Also supports ElevenLabs as an alternative engine.
+- **Streaming Neural Voice AI (Deepgram Aura 2)**: Continuous, jitter-buffered real-time MP3 streaming via `mpv` with sub-200ms latency, zero gap between sentences, and zero local CPU load. Also supports ElevenLabs as an alternative engine.
 - **Zero-Latency Rust Daemon**: Native async Rust daemon (`xarvin-daemon`) keeping an active warm Antigravity CLI brain session in memory with zero cold-start delay.
 - **Tool & Agent Integrations**:
   - **Composio MCP**: System management, calendar, browser, and developer integrations.
@@ -54,7 +54,7 @@ flowchart TD
     Agy -->|Streaming Response Sentences| Daemon
     Daemon -->|JSON IPC| TTS["Speech Synthesis Worker (xarvin_tts_worker.py)"]
     TTS -->|Streaming Audio API| Deepgram["Deepgram Aura 2 / ElevenLabs"]
-    Deepgram -->|Streaming Audio| Audio["PipeWire (pw-play)"]
+    Deepgram -->|Streaming MP3 (Pipelined)| Audio["mpv (PipeWire Output)"]
     Daemon -->|Atomic State Broadcast| State["xarvin-state.json"]
     State -->|FileView Inotify| Notch
     State -->|FileView Inotify| Bar["Omarchy Status Bar Widget (XarvinBar.qml)"]
@@ -71,7 +71,7 @@ Ensure you have the following installed on your system:
 | **Rust & Cargo** | `sudo pacman -S rust` | `sudo dnf install cargo` | `sudo apt install cargo` |
 | **Python 3** | `sudo pacman -S python` | `sudo dnf install python3` | `sudo apt install python3 python3-venv` |
 | **Quickshell** | `sudo pacman -S quickshell` | [Build from source](https://git.outfoxxed.me/outfoxxed/quickshell) | [Build from source](https://git.outfoxxed.me/outfoxxed/quickshell) |
-| **Audio Backend** | Built-in (`pw-play` / PipeWire) | Built-in (`pipewire-utils`) | Built-in (`pipewire-bin`) |
+| **Audio Player** | `sudo pacman -S mpv` | `sudo dnf install mpv` | `sudo apt install mpv` |
 | **Antigravity CLI** | `agy` (Installed in `~/.local/bin/agy`) | `agy` (Installed in `~/.local/bin/agy`) | `agy` (Installed in `~/.local/bin/agy`) |
 
 ---
@@ -87,7 +87,7 @@ cd ~/Projects/xarvin
 ```
 
 ### What `install.sh` Does Automatically:
-1. Validates system dependencies (`cargo`, `python3`, `pipewire`, `quickshell`).
+1. Validates system dependencies (`cargo`, `python3`, `mpv`, `quickshell`).
 2. Configures a Python virtual environment and installs speech dependencies.
 3. Builds the optimized native Rust binary (`xarvin-daemon`) and links `xarvin` to `~/.local/bin/`.
 4. Symlinks the Quickshell package to `~/.config/quickshell/xarvin`.
